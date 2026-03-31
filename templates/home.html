@@ -7,6 +7,16 @@
         Deine gemeinsame Wochenplanung für anfallende Aufgaben, Essensplanung und Einkaufsliste.
     </p>
 
+    {% if household %}
+        <p class="test-muted mb-4">
+            Aktueller Haushalt: <strong>{{ household.name }}</strong>
+        </p>
+    {% else %}
+        <div class="alert alert-warning">
+            Du bist aktuell noch keinem Haushalt zugeordnet.
+        </div>
+    {% endif %}
+
     <hr>
 
     <div class="row g-3 mt-3">
