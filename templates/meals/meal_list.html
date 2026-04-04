@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2 mb-1">Essensplanung</h1>
+        <p class="text-muted mb-0">Diese Woche für {{ household.name }}</p>
+    </div>
+    <a href="{% url 'meal_create' %}" class="btn btn-dark">+ Mahlzeit planen</a>
+</div>
+
+<div class="row g-3">
+    {% for day in week_plan %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">{{ day.date|date:"l, d.m.Y" }}</h5>
+                    <hr>
+
+                    <div class="mb-3">
+                        <h6 class="fw-bold">Mittagessen</h6>
+                        {% if day.lunch %}
+                            <p class="mb-1"><strong>{{ day.lunch.recipe.title }}</strong></p>
+                            <p class="small text-muted mb-2">{{ day.lunch.assigned_to|default:"Niemand kocht" }}</p>
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'meal_update' day.lunch.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                                <a href="{% url 'meal_delete' day.lunch.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
+                            </div>
+                        {% else %}
+                            <p class="text-muted small">Noch nichts geplant.</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <h6 class="fw-bold">Abendessen</h6>
+                        {% if day.dinner %}
+                            <p class="mb-1"><strong>{{ day.dinner.recipe.title }}</strong></p>
+                            <p class="small text-muted mb-2">{{ day.dinner.assigned_to|default:"Niemand kocht" }}</p>
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'meal_update' day.dinner.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                                <a href="{% url 'meal_delete' day.dinner.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
+                            </div>
+                        {% else %}
+                            <p class="text-muted small">Noch nichts geplant.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

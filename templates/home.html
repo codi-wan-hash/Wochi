@@ -1,54 +1,151 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="p-5 mb-4 bg-white rounded-4 shadow-sm">
-    <h1 class="display-6 fw-bold">Willkommen bei Wochi</h1>
-    <p class="lead">
-        Deine gemeinsame Wochenplanung für anfallende Aufgaben, Essensplanung und Einkaufsliste.
+<div class="mb-4">
+    <h1 class="display-6 fw-bold">Willkommen bei OurWeek</h1>
+    <p class="lead text-muted">
+        Eure gemeinsame Wochenplanung für Aufgaben, Essen und Einkäufe.
     </p>
 
     {% if household %}
-        <p class="test-muted mb-4">
-            Aktueller Haushalt: <strong>{{ household.name }}</strong>
+        <p class="text-muted">
+            Aktiver Haushalt: <strong>{{ household.name }}</strong>
         </p>
     {% else %}
         <div class="alert alert-warning">
             Du bist aktuell noch keinem Haushalt zugeordnet.
         </div>
     {% endif %}
+</div>
 
-    <hr>
-
-    <div class="row g-3 mt-3">
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">To-dos</h5>
-                    <p class="card-text">Plane Aufgaben für eure Woche.</p>
-                    <a href="#" class="btn btn-primary disabled">TBD</a>
-                </div>
+{% if household %}
+<div class="row g-4 mb-5">
+    <div class="col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <p class="text-muted mb-2">Offene Aufgaben</p>
+                <h2 class="fw-bold mb-0">{{ open_tasks_count }}</h2>
             </div>
         </div>
+    </div>
 
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">Essensplanung</h5>
-                    <p class="card-test">Plant eure Mahlzeiten für die Woche</p>
-                    <a href="#" class="btn btn-primary disabled">TBD</a>
-                </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <p class="text-muted mb-2">Erledigte Aufgaben</p>
+                <h2 class="fw-bold mb-0">{{ done_tasks_count }}</h2>
             </div>
         </div>
+    </div>
 
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">Einkaufsliste</h5>
-                    <p class="card-test">Behalte alle Einkäufe im Blick.</p>
-                    <a href="#" class="btn btn-primary disabled">TBD</a>
-                </div>
+    <div class="col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <p class="text-muted mb-2">Geplante Mahlzeiten</p>
+                <h2 class="fw-bold mb-0">{{ planned_meals_count }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <p class="text-muted mb-2">Offene Einkäufe</p>
+                <h2 class="fw-bold mb-0">{{ open_shopping_count }}</h2>
             </div>
         </div>
     </div>
 </div>
+
+<div class="row g-4 mb-5">
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <h4 class="mb-3">To-dos</h4>
+                <p class="text-muted">Plane Aufgaben für eure Woche.</p>
+                <a href="{% url 'task_list' %}" class="btn btn-dark">Zu den Aufgaben</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <h4 class="mb-3">Essensplanung</h4>
+                <p class="text-muted">Plane eure Mahlzeiten für die Woche.</p>
+                <a href="{% url 'meal_list' %}" class="btn btn-dark">Zur Essensplanung</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <h4 class="mb-3">Einkaufsliste</h4>
+                <p class="text-muted">Behalte offene Einkäufe im Blick.</p>
+                <a href="{% url 'shopping_list' %}" class="btn btn-dark">Zur Einkaufsliste</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <h4 class="mb-3">Nächste Aufgaben</h4>
+
+                {% if recent_tasks %}
+                    <ul class="list-group list-group-flush">
+                        {% for task in recent_tasks %}
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <strong>{{ task.title }}</strong><br>
+                                        <small class="text-muted">Fällig: {{ task.due_date }}</small>
+                                    </div>
+                                    <span class="badge 
+                                        {% if task.priority == 'high' %}bg-danger
+                                        {% elif task.priority == 'medium' %}bg-warning text-dark
+                                        {% else %}bg-secondary{% endif %}">
+                                        {{ task.get_priority_display }}
+                                    </span>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted mb-0">Keine offenen Aufgaben vorhanden.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body p-4">
+                <h4 class="mb-3">Offene Einkäufe</h4>
+
+                {% if recent_shopping_items %}
+                    <ul class="list-group list-group-flush">
+                        {% for item in recent_shopping_items %}
+                            <li class="list-group-item px-0 d-flex justify-content-between">
+                                <div>
+                                    <strong>{{ item.name }}</strong>
+                                    {% if item.quantity %}
+                                        <small class="text-muted">– {{ item.quantity }}</small>
+                                    {% endif %}
+                                </div>
+                                <span class="badge bg-secondary">{{ item.get_category_display }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted mb-0">Keine offenen Einkäufe vorhanden.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
