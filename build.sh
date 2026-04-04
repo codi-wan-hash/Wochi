@@ -11,7 +11,7 @@ echo "Running migrations..."
 python manage.py migrate
 
 
-if ["$CREATE_SUPERUSER" = "True" ]; then
+if [ "$CREATE_SUPERUSER" = "True" ]; then
     echo "Attempting to create superuser..."
 
     python manage.py shell <<EOF
