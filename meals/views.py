@@ -11,7 +11,7 @@ from .forms import MealPlanForm, RecipeForm
 def get_week_dates():
     today = timezone.localdate()
     start_of_week = today - timedelta(days=today.weekday())  # Montag
-    return [start_of_week + timedelta(days=i) for i in range(7)]
+    return [start_of_week + timedelta(days=i) for i in range(14)]
 
 
 @login_required
