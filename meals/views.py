@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -10,8 +10,17 @@ from .forms import MealPlanForm, RecipeForm
 
 def get_week_dates():
     today = timezone.localdate()
-    start_of_week = today - timedelta(days=today.weekday())  # Montag
-    return [start_of_week + timedelta(days=i) for i in range(14)]
+    start_of_week = today - timedelta(days=today.weekday()) # monday
+    end_of_next_week = start_of_week + timedelta(days=13) # sunday next week
+
+    week_dates = []
+    current_day = today
+    
+    while current_day <= end_of_next_week:
+        week_dates.append(current_day)
+        current_day += timedelta(days=1)
+
+    return week_dates
 
 
 @login_required
@@ -57,7 +66,14 @@ def meal_create(request):
             meal.save()
             return redirect("meal_list")
     else:
-        form = MealPlanForm(household=household)
+        form = MealPlanForm(
+            initial={
+                "date": datetime.strptime(request.GET.get("date"), "%B %d, %Y").date(),
+                "meal_type": request.GET.get("meal_type"),
+            },
+            household=household
+        )
+        print("form", form.initial)
 
     return render(request, "meals/meal_form.html", {
         "form": form,
