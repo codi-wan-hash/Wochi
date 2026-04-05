@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+from django.contrib.auth import login
+from django.shortcuts import render, redirect
 from django.utils import timezone
 
 from households.utils import get_current_household
@@ -8,6 +9,27 @@ from tasks.models import Task
 from meals.models import MealPlan
 from shopping.models import ShoppingItem
 
+from .forms import RegisterForm
+
+
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("home")
+    
+    if request.method == "POST":
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect("home")
+        
+    else:
+        form = RegisterForm()
+
+    return render(request, "registration/register.html", {"form": form})
+
+        
+    
 
 @login_required
 def home(request):
@@ -26,7 +48,7 @@ def home(request):
     if household:
         today = timezone.localdate()
         start_of_week = today - timedelta(days=today.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
+        end_of_week = start_of_week + timedelta(days=13)
 
         open_tasks = Task.objects.filter(household=household, status="open")
         done_tasks = Task.objects.filter(household=household, status="done")

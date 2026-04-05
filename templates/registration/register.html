@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 500px;">
+    <h2 class="mb-4">Registrieren</h2>
+
+    <form method="post" class="card card-body shadow-sm">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <div class="mb-3">
+            <label class="form-label">Benutzername</label>
+            {{ form.username }}
+            {{ form.username.errors }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">E-Mail</label>
+            {{ form.email }}
+            {{ form.email.errors }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Passwort</label>
+            {{ form.password1 }}
+            {{ form.password1.errors }}
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Passwort wiederholen</label>
+            {{ form.password2 }}
+            {{ form.password2.errors }}
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Account erstellen</button>
+    </form>
+
+    <p class="mt-3 text-center">
+        Schon einen Account?
+        <a href="{% url 'login' %}">Zum Login</a>
+    </p>
+</div>
+{% endblock %}
