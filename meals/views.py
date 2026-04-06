@@ -28,7 +28,7 @@ def meal_list(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "meals/no_household.html")
+        return render(request, "choose_household.html")
 
     week_dates = get_week_dates()
     meals = MealPlan.objects.filter(household=household, date__in=week_dates)
@@ -56,7 +56,7 @@ def meal_create(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "meals/no_household.html")
+        return render(request, "meals/choose_household.html")
 
     if request.method == "POST":
         form = MealPlanForm(request.POST, household=household)
@@ -117,7 +117,7 @@ def recipe_list(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "meals/no_household.html")
+        return render(request, "meals/choose_household.html")
 
     recipes = Recipe.objects.filter(household=household)
 
@@ -132,7 +132,7 @@ def recipe_create(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "meals/no_household.html")
+        return render(request, "meals/choose_household.htmls")
 
     if request.method == "POST":
         form = RecipeForm(request.POST)

@@ -21,7 +21,7 @@ def register_view(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-            return redirect("home")
+            return redirect("choose_household")
         
     else:
         form = RegisterForm()
@@ -34,6 +34,9 @@ def register_view(request):
 @login_required
 def home(request):
     household = get_current_household(request.user)
+
+    if not household:
+        return redirect("choose_household")
 
     context = {
         "household": household,

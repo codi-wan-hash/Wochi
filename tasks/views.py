@@ -9,7 +9,7 @@ def task_list(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "tasks/no_household.html")
+        return render(request, "tasks/choose_household.html")
     
     tasks = Task.objects.filter(household=household)
 
@@ -28,7 +28,7 @@ def task_create(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "tasks/no_household.html")
+        return render(request, "tasks/choose_household.html")
     
     if request.method == "POST":
         form = TaskForm(request.POST, household=household)

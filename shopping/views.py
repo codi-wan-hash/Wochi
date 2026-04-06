@@ -10,7 +10,7 @@ def shopping_list(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "shopping/no_household.html")
+        return render(request, "shopping/choose_household.html")
     
     items = ShoppingItem.objects.filter(household=household)
 
@@ -31,7 +31,7 @@ def shopping_create(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "shopping/no_household.html")
+        return render(request, "shopping/choose_household.html")
     
     if request. method == "POST":
         form = ShoppingItemForm(request.POST)

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 700px;">
+    <h1 class="mb-4">Haushalt auswählen</h1>
+    <p class="text-muted mb-4">
+        Du bist aktuell noch keinem Haushalt zugeordnet.
+    </p>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h4 class="mb-3">Neuen Haushalt erstellen</h4>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create">
+
+                <div class="mb-3">
+                    <label class="form-label">Haushaltsname</label>
+                    <input type="text" name="name" class="form-control" placeholder="z. B. Stefan & Lisa" required>
+                </div>
+
+                <button type="submit" class="btn btn-dark">Haushalt erstellen</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h4 class="mb-3">Bestehendem Haushalt beitreten</h4>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="join">
+
+                <div class="mb-3">
+                    <label class="form-label">Haushalt auswählen</label>
+                    <select name="household_id" class="form-select" required>
+                        <option value="">Bitte auswählen</option>
+                        {% for household in households %}
+                            <option value="{{ household.id }}">{{ household.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-outline-primary">Beitreten</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
