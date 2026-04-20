@@ -7,6 +7,7 @@ class Recipe(models.Model):
     household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="recipes")
     title = models.CharField(max_length=200)
     notes = models.TextField(blank=True)
+    instructions = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -20,6 +21,15 @@ class Recipe(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Ingredient(models.Model):
+    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name="ingredients")
+    name = models.CharField(max_length=200)
+    quantity = models.CharField(max_length=100, blank=True)
+
+    def __str__(self):
+        return self.name
 
 
 class MealPlan(models.Model):

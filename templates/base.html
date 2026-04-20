@@ -14,7 +14,7 @@
 
         {% if user.is_authenticated %}
         <div class="navbar-nav ms-4">
-            <a class="nav-link" href="{% url 'task_list' %}">To-dos</a>
+            <a class="nav-link" href="{% url 'task_list' %}">Aufgaben</a>
             <a class="nav-link" href="{% url 'meal_list' %}">Essensplanung</a>
             <a class="nav-link" href="{% url 'recipe_list' %}">Gerichte</a>
             <a class="nav-link" href="{% url 'shopping_list' %}">Einkaufsliste</a>
@@ -26,7 +26,7 @@
                 <span class="text-white small">Hallo, {{ user.username }}</span>
                 <form method="post" action="{% url 'logout' %}" class="d-inline">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
+                    <button type="submit" class="btn btn-outline-light btn-sm">Abmelden</button>
                 </form>
             {% endif %}
         </div>

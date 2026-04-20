@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{% url 'recipe_list' %}" class="text-muted text-decoration-none small">← Gerichte</a>
+        <h1 class="h2 mb-0 mt-1">{{ recipe.title }}</h1>
+    </div>
+    <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-outline-secondary btn-sm">Bearbeiten</a>
+</div>
+
+{% if recipe.notes %}
+    <p class="text-muted mb-4">{{ recipe.notes }}</p>
+{% endif %}
+
+<div class="row g-4">
+
+    <!-- Zutaten -->
+    <div class="col-md-7">
+        <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Zutaten</div>
+            <ul class="list-group list-group-flush" id="ingredient-list">
+                {% for ingredient in recipe.ingredients.all %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center" id="ingredient-{{ ingredient.pk }}">
+                        <span class="d-flex align-items-center gap-2 flex-grow-1 me-2">
+                            {{ ingredient.name }}
+                            <span class="qty-display text-muted small" style="cursor:pointer;" title="Menge anpassen"
+                                data-pk="{{ ingredient.pk }}"
+                                data-scale-url="{% url 'ingredient_scale' ingredient.pk %}">
+                                {% if ingredient.quantity %}{{ ingredient.quantity }}{% else %}<span class="fst-italic">—</span>{% endif %}
+                            </span>
+                            <input type="text" class="qty-input form-control form-control-sm d-none"
+                                style="max-width:90px;"
+                                data-pk="{{ ingredient.pk }}"
+                                data-scale-url="{% url 'ingredient_scale' ingredient.pk %}"
+                                value="{{ ingredient.quantity }}">
+                        </span>
+                        <span class="d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-success py-0 px-2 btn-to-shopping"
+                                data-url="{% url 'ingredient_to_shopping' ingredient.pk %}"
+                                data-name="{{ ingredient.name }}"
+                                data-quantity="{{ ingredient.quantity }}"
+                                title="In Einkaufsliste">+</button>
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-delete-ingredient"
+                                data-url="{% url 'ingredient_delete' ingredient.pk %}">✕</button>
+                        </span>
+                    </li>
+                {% empty %}
+                    <li class="list-group-item text-muted" id="empty-ingredients">Noch keine Zutaten hinzugefügt.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Zutat hinzufügen -->
+    <div class="col-md-5">
+        <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Zutat hinzufügen</div>
+            <div class="card-body">
+                <datalist id="item-suggestions">
+                    {% for name in suggestions %}<option value="{{ name }}">{% endfor %}
+                </datalist>
+                <datalist id="quantity-suggestions">
+                    {% for q in quantity_suggestions %}<option value="{{ q }}">{% endfor %}
+                </datalist>
+                <form id="ingredient-form">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold">Name</label>
+                        {{ form.name }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Menge</label>
+                        {{ form.quantity }}
+                    </div>
+                    <button type="submit" class="btn btn-dark btn-sm w-100">Hinzufügen</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zubereitung -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Zubereitung</span>
+                <button class="btn btn-outline-secondary btn-sm" id="btn-edit-instructions">Bearbeiten</button>
+            </div>
+            <div class="card-body">
+                <div id="instructions-display">
+                    {% if recipe.instructions %}
+                        <p style="white-space: pre-line;">{{ recipe.instructions }}</p>
+                    {% else %}
+                        <p class="text-muted" id="instructions-empty">Noch keine Zubereitung eingetragen.</p>
+                    {% endif %}
+                </div>
+                <div id="instructions-edit" style="display:none;">
+                    <textarea id="instructions-textarea" class="form-control mb-2" rows="10">{{ recipe.instructions }}</textarea>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-dark btn-sm" id="btn-save-instructions">Speichern</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="btn-cancel-instructions">Abbrechen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KI-Vorschläge -->
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">KI-Rezeptvorschläge</span>
+                <button class="btn btn-dark btn-sm" id="btn-ai-suggest">
+                    ✨ 3 Vorschläge generieren
+                </button>
+            </div>
+            <div class="card-body" id="ai-results" style="display:none;"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Duplikat-Modal -->
+<div class="modal fade" id="duplicateModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Bereits in der Einkaufsliste</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1"><strong id="modal-name"></strong> ist bereits auf der Einkaufsliste.</p>
+                <p class="text-muted small mb-0">
+                    Aktuelle Menge: <span id="modal-existing-qty">—</span><br>
+                    Neu hinzufügen: <span id="modal-new-qty">—</span>
+                </p>
+            </div>
+            <div class="modal-footer flex-column gap-2 align-items-stretch">
+                <button type="button" class="btn btn-success btn-sm" id="btn-merge">Menge erweitern</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Nicht hinzufügen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const csrfToken = "{{ csrf_token }}";
+const addIngredientUrl = "{% url 'ingredient_add' recipe.pk %}";
+const saveInstructionsUrl = "{% url 'recipe_update' recipe.pk %}";
+const aiSuggestUrl = "{% url 'recipe_ai_suggest' recipe.pk %}";
+const applyUrl = "{% url 'recipe_apply_suggestion' recipe.pk %}";
+let duplicateModal;
+
+document.addEventListener("DOMContentLoaded", () => {
+    duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+});
+
+function ajaxPost(url, body) {
+    return fetch(url, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+        body: body,
+    });
+}
+function ajaxPostJSON(url, data) {
+    return fetch(url, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+    });
+}
+
+// ── Zutat zum Rezept hinzufügen ──
+document.getElementById("ingredient-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    ajaxPost(addIngredientUrl, new FormData(this))
+        .then(r => r.json())
+        .then(ingredient => {
+            document.getElementById("empty-ingredients")?.remove();
+            const list = document.getElementById("ingredient-list");
+            const existingLi = document.getElementById("ingredient-" + ingredient.id);
+
+            const liHTML = `
+                <span class="d-flex align-items-center gap-2 flex-grow-1 me-2">
+                    ${ingredient.name}
+                    <span class="qty-display text-muted small" style="cursor:pointer;" title="Menge anpassen"
+                        data-pk="${ingredient.id}"
+                        data-scale-url="/meals/ingredients/${ingredient.id}/scale/">
+                        ${ingredient.quantity || '<span class="fst-italic">—</span>'}
+                    </span>
+                    <input type="text" class="qty-input form-control form-control-sm d-none"
+                        style="max-width:90px;"
+                        data-pk="${ingredient.id}"
+                        data-scale-url="/meals/ingredients/${ingredient.id}/scale/"
+                        value="${ingredient.quantity || ''}">
+                </span>
+                <span class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-success py-0 px-2 btn-to-shopping"
+                        data-url="/meals/ingredients/${ingredient.id}/to-shopping/"
+                        data-name="${ingredient.name}" data-quantity="${ingredient.quantity}"
+                        title="In Einkaufsliste">+</button>
+                    <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-delete-ingredient"
+                        data-url="/meals/ingredients/${ingredient.id}/delete/">✕</button>
+                </span>`;
+
+            if (existingLi) {
+                existingLi.innerHTML = liHTML;
+            } else {
+                const li = document.createElement("li");
+                li.className = "list-group-item d-flex justify-content-between align-items-center";
+                li.id = "ingredient-" + ingredient.id;
+                li.innerHTML = liHTML;
+                list.appendChild(li);
+            }
+            const dl = document.getElementById("item-suggestions");
+            if (dl && ![...dl.options].some(o => o.value.toLowerCase() === ingredient.name.toLowerCase())) {
+                const opt = document.createElement("option");
+                opt.value = ingredient.name;
+                dl.appendChild(opt);
+            }
+            this.reset();
+        });
+});
+
+// ── Zubereitung bearbeiten ──
+document.getElementById("btn-edit-instructions").addEventListener("click", () => {
+    document.getElementById("instructions-display").style.display = "none";
+    document.getElementById("instructions-edit").style.display = "";
+});
+document.getElementById("btn-cancel-instructions").addEventListener("click", () => {
+    document.getElementById("instructions-edit").style.display = "none";
+    document.getElementById("instructions-display").style.display = "";
+});
+document.getElementById("btn-save-instructions").addEventListener("click", () => {
+    const text = document.getElementById("instructions-textarea").value;
+    ajaxPostJSON(applyUrl, { instructions: text, ingredients: null, save_instructions_only: true })
+        .then(r => r.json())
+        .then(() => {
+            const display = document.getElementById("instructions-display");
+            const empty = document.getElementById("instructions-empty");
+            if (text.trim()) {
+                display.innerHTML = `<p style="white-space: pre-line;">${text.replace(/</g, "&lt;")}</p>`;
+            } else {
+                display.innerHTML = `<p class="text-muted" id="instructions-empty">Noch keine Zubereitung eingetragen.</p>`;
+            }
+            document.getElementById("instructions-edit").style.display = "none";
+            display.style.display = "";
+        });
+});
+
+// ── KI-Vorschläge ──
+document.getElementById("btn-ai-suggest").addEventListener("click", function () {
+    const btn = this;
+    const results = document.getElementById("ai-results");
+    btn.disabled = true;
+    btn.textContent = "Wird geladen…";
+    results.style.display = "";
+    results.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div> GPT denkt nach…</div>';
+
+    ajaxPost(aiSuggestUrl, new FormData())
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                results.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                btn.disabled = false;
+                btn.textContent = "✨ 3 Vorschläge generieren";
+                return;
+            }
+            results.innerHTML = data.suggestions.map((s, i) => `
+                <div class="card mb-3 border-0 bg-light">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <h6 class="fw-semibold mb-0">Variante ${i + 1}: ${s.variant}</h6>
+                            <button class="btn btn-success btn-sm btn-apply-suggestion flex-shrink-0 ms-2"
+                                data-index="${i}">Diese Version übernehmen</button>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="fw-semibold small text-muted text-uppercase mb-1">Zutaten</div>
+                                <ul class="list-unstyled small mb-0">
+                                    ${s.ingredients.map(ing => `<li>· ${ing.name}${ing.quantity ? ` <span class="text-muted">${ing.quantity}</span>` : ""}</li>`).join("")}
+                                </ul>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="fw-semibold small text-muted text-uppercase mb-1">Zubereitung</div>
+                                <p class="small mb-0" style="white-space:pre-line;">${s.instructions.replace(/</g,"&lt;")}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join("");
+            btn.disabled = false;
+            btn.textContent = "✨ Neu generieren";
+
+            // Suggestions-Daten für Apply speichern
+            document.querySelectorAll(".btn-apply-suggestion").forEach(b => {
+                b.addEventListener("click", function () {
+                    const s = data.suggestions[parseInt(this.dataset.index)];
+                    if (!confirm(`Variante "${s.variant}" übernehmen? Bestehende Zutaten und Zubereitung werden ersetzt.`)) return;
+                    ajaxPostJSON(applyUrl, { ingredients: s.ingredients, instructions: s.instructions })
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.success) location.reload();
+                        });
+                });
+            });
+        })
+        .catch(() => {
+            results.innerHTML = '<div class="alert alert-danger">Fehler beim API-Aufruf.</div>';
+            btn.disabled = false;
+            btn.textContent = "✨ 3 Vorschläge generieren";
+        });
+});
+
+// ── Zutat in Einkaufsliste ──
+document.addEventListener("click", function (e) {
+    const toShoppingBtn = e.target.closest(".btn-to-shopping");
+    if (toShoppingBtn) {
+        e.preventDefault();
+        ajaxPost(toShoppingBtn.dataset.url, new FormData())
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === "added") {
+                    toShoppingBtn.textContent = "✓";
+                    toShoppingBtn.classList.replace("btn-outline-success", "btn-success");
+                    toShoppingBtn.disabled = true;
+                } else if (data.status === "duplicate") {
+                    document.getElementById("modal-name").textContent = data.name;
+                    document.getElementById("modal-existing-qty").textContent = data.existing_quantity || "keine Angabe";
+                    document.getElementById("modal-new-qty").textContent = data.new_quantity || "keine Angabe";
+                    const mergeBtn = document.getElementById("btn-merge");
+                    mergeBtn.onclick = () => {
+                        const body = new FormData();
+                        body.append("extra_quantity", data.new_quantity);
+                        ajaxPost(`/meals/shopping/${data.existing_id}/merge/`, body)
+                            .then(r => r.json())
+                            .then(() => {
+                                duplicateModal.hide();
+                                toShoppingBtn.textContent = "✓";
+                                toShoppingBtn.classList.replace("btn-outline-success", "btn-success");
+                                toShoppingBtn.disabled = true;
+                            });
+                    };
+                    duplicateModal.show();
+                }
+            });
+    }
+
+    const deleteBtn = e.target.closest(".btn-delete-ingredient");
+    if (deleteBtn) {
+        e.preventDefault();
+        ajaxPost(deleteBtn.dataset.url, new FormData())
+            .then(r => r.json())
+            .then(data => {
+                if (!data.deleted) return;
+                deleteBtn.closest("li").remove();
+                const list = document.getElementById("ingredient-list");
+                if (list.children.length === 0) {
+                    list.innerHTML = '<li class="list-group-item text-muted" id="empty-ingredients">Noch keine Zutaten hinzugefügt.</li>';
+                }
+            });
+    }
+
+    // Click on quantity → show input
+    const qtyDisplay = e.target.closest(".qty-display");
+    if (qtyDisplay) {
+        const pk = qtyDisplay.dataset.pk;
+        const input = document.querySelector(`.qty-input[data-pk="${pk}"]`);
+        qtyDisplay.classList.add("d-none");
+        input.classList.remove("d-none");
+        input.focus();
+        input.select();
+    }
+});
+
+function applyScaleResult(ingredients) {
+    ingredients.forEach(ing => {
+        const display = document.querySelector(`.qty-display[data-pk="${ing.id}"]`);
+        const input = document.querySelector(`.qty-input[data-pk="${ing.id}"]`);
+        if (display) display.textContent = ing.quantity || "—";
+        if (input) input.value = ing.quantity || "";
+        // Also update data-quantity on the to-shopping button
+        const li = document.getElementById("ingredient-" + ing.id);
+        if (li) {
+            const btn = li.querySelector(".btn-to-shopping");
+            if (btn) btn.dataset.quantity = ing.quantity || "";
+        }
+    });
+}
+
+// Confirm quantity edit on Enter or blur
+document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.classList.contains("qty-input")) {
+        e.target.blur();
+    }
+    if (e.key === "Escape" && e.target.classList.contains("qty-input")) {
+        const input = e.target;
+        const display = document.querySelector(`.qty-display[data-pk="${input.dataset.pk}"]`);
+        input.classList.add("d-none");
+        display.classList.remove("d-none");
+    }
+});
+
+document.addEventListener("focusout", function (e) {
+    if (!e.target.classList.contains("qty-input")) return;
+    const input = e.target;
+    const display = document.querySelector(`.qty-display[data-pk="${input.dataset.pk}"]`);
+    const newQty = input.value.trim();
+
+    input.classList.add("d-none");
+    display.classList.remove("d-none");
+
+    if (newQty === (display.textContent.trim() === "—" ? "" : display.textContent.trim())) return;
+
+    const body = new FormData();
+    body.append("quantity", newQty);
+    ajaxPost(input.dataset.scaleUrl, body)
+        .then(r => r.json())
+        .then(data => {
+            if (data.ingredients) applyScaleResult(data.ingredients);
+        });
+});
+</script>
+{% endblock %}

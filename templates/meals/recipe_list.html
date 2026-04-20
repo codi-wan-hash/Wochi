@@ -22,6 +22,7 @@
                         <p class="small text-muted">Erstellt von: {{ recipe.created_by }}</p>
 
                         <div class="d-flex gap-2">
+                            <a href="{% url 'recipe_detail' recipe.pk %}" class="btn btn-sm btn-dark">Zutaten</a>
                             <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
                             <a href="{% url 'recipe_delete' recipe.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
                         </div>

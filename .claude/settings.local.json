@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python manage.py makemigrations shopping meals)",
+      "Bash(.venv/Scripts/python manage.py migrate)",
+      "Bash(.venv/Scripts/pip freeze *)",
+      "Bash(.venv/Scripts/python manage.py check)",
+      "Bash(.venv/Scripts/python manage.py shell -c ' *)"
+    ]
+  }
+}

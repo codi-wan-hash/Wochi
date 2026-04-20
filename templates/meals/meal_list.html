@@ -1,88 +1,184 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h1 class="h2 mb-1">Essensplanung</h1>
-        <p class="text-muted mb-0">Ab heute + nächste Woche für {{ household.name }}</p>
-    </div>
-    <a href="{% url 'meal_create' %}" class="btn btn-dark">+ Mahlzeit planen</a>
+
+<style>
+  .meal-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr;
+    align-items: center;
+    gap: 0;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background .15s;
+  }
+  .meal-row:last-child { border-bottom: none; }
+  .meal-row:hover { background: #fafafa; }
+  .meal-row.is-today {
+    background: #fffbf0;
+    border-left: 3px solid #f5a623;
+  }
+  .meal-row.is-today:hover { background: #fff8e6; }
+  .meal-row.is-weekend .day-col { color: #6c757d; }
+
+  .day-col {
+    padding: 14px 12px 14px 16px;
+    line-height: 1.2;
+  }
+  .day-name {
+    font-weight: 600;
+    font-size: .85rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+  .day-date { font-size: .78rem; color: #6c757d; }
+  .is-today .day-name { color: #e07b00; }
+  .is-today .day-date { color: #e07b00; opacity: .75; }
+
+  .meal-col {
+    padding: 10px 14px;
+    border-left: 1px solid #f0f0f0;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+  }
+  .meal-col-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+  }
+  .meal-label {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 2px;
+  }
+  .meal-title {
+    font-size: .9rem;
+    font-weight: 500;
+    color: #212529;
+  }
+  .meal-person {
+    font-size: .75rem;
+    color: #6c757d;
+  }
+  .meal-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .meal-actions a {
+    color: #6c757d;
+    text-decoration: none;
+    font-size: .85rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: color .15s, background .15s;
+  }
+  .meal-actions a:hover { color: #495057; background: #e9ecef; }
+  .meal-actions a.del:hover { color: #dc3545; background: #fde8ea; }
+
+  .add-link {
+    font-size: .8rem;
+    color: #6c757d;
+    text-decoration: none;
+    border: 1.5px dashed #dee2e6;
+    border-radius: 6px;
+    padding: 3px 10px;
+    transition: border-color .15s, color .15s;
+  }
+  .add-link:hover { border-color: #6c757d; color: #495057; }
+  .meal-content { padding-left: 10px; }
+
+  .week-header {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    padding: 10px 16px 4px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #f0f0f0;
+  }
+</style>
+
+<div class="mb-4">
+  <h1 class="h2 mb-1">Essensplanung</h1>
+  <p class="text-muted mb-0">{{ household.name }}</p>
 </div>
 
-<div class="row g-3">
-    {% for day in week_plan %}
-        <div class="col-md-6 col-lg-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h5 class="card-title">{{ day.date|date:"l, d.m.Y" }}</h5>
-                    <hr>
+<div class="card shadow-sm overflow-hidden">
 
-                    <div class="mb-4">
-                        <h6 class="fw-bold">Mittagessen</h6>
+  {% now "Y-m-d" as today_str %}
+  {% now "W" as today_week %}
 
-                        {% if day.lunch %}
-                            <div class="p-3 rounded border bg-light">
-                                <p class="mb-1"><strong>{{ day.lunch.recipe.title }}</strong></p>
-                                <p class="small text-muted mb-2">
-                                    {{ day.lunch.assigned_to|default:"Niemand kocht" }}
-                                </p>
-                                <div class="d-flex gap-2">
-                                    <a href="{% url 'meal_update' day.lunch.pk %}" class="btn btn-sm btn-outline-primary">
-                                        Bearbeiten
-                                    </a>
-                                    <a href="{% url 'meal_delete' day.lunch.pk %}" class="btn btn-sm btn-outline-danger">
-                                        Löschen
-                                    </a>
-                                </div>
-                            </div>
-                        {% else %}
-                            <div class="p-3 rounded border bg-light">
-                                <p class="text-muted small mb-2">Noch nichts geplant.</p>
-                                <a href="{% url 'meal_create' %}?date={{ day.date }}&meal_type=lunch"
-                                   class="btn btn-sm btn-outline-success">
-                                    + Mittagessen hinzufügen
-                                </a>
-                            </div>
-                        {% endif %}
-                    </div>
+  {% for day in week_plan %}
+    {% with wday=day.date|date:"N" iso_week=day.date|date:"W" %}
 
-                    <div>
-                        <h6 class="fw-bold">Abendessen</h6>
+      {% if forloop.first %}
+        <div class="week-header">Diese Woche</div>
+      {% endif %}
+      {% if day.is_next_week_start %}
+        <div class="week-header">Nächste Woche</div>
+      {% endif %}
 
-                        {% if day.dinner %}
-                            <div class="p-3 rounded border bg-light">
-                                <p class="mb-1"><strong>{{ day.dinner.recipe.title }}</strong></p>
-                                <p class="small text-muted mb-2">
-                                    {{ day.dinner.assigned_to|default:"Niemand kocht" }}
-                                </p>
-                                <div class="d-flex gap-2">
-                                    <a href="{% url 'meal_update' day.dinner.pk %}" class="btn btn-sm btn-outline-primary">
-                                        Bearbeiten
-                                    </a>
-                                    <a href="{% url 'meal_delete' day.dinner.pk %}" class="btn btn-sm btn-outline-danger">
-                                        Löschen
-                                    </a>
-                                </div>
-                            </div>
-                        {% else %}
-                            <div class="p-3 rounded border bg-light">
-                                <p class="text-muted small mb-2">Noch nichts geplant.</p>
-                                <a href="{% url 'meal_create' %}?date={{ day.date }}&meal_type=dinner"
-                                   class="btn btn-sm btn-outline-success">
-                                    + Abendessen hinzufügen
-                                </a>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+      <div class="meal-row
+        {% if day.date|date:'Y-m-d' == today_str %}is-today{% endif %}
+        {% if day.date|date:'w' == '0' or day.date|date:'w' == '6' %}is-weekend{% endif %}">
+
+        <div class="day-col">
+          <div class="day-name">{{ day.date|date:"D" }}</div>
+          <div class="day-date">{{ day.date|date:"d.m." }}</div>
         </div>
-    {% empty %}
-        <div class="col-12">
-            <div class="alert alert-info">
-                Keine Tage zum Anzeigen vorhanden.
-            </div>
+
+        <div class="meal-col">
+          <div class="meal-col-inner">
+            {% if day.lunch %}
+              <div class="meal-content">
+                <div class="meal-label">☀ Mittag</div>
+                <div class="meal-title">{{ day.lunch.recipe.title }}</div>
+                {% if day.lunch.assigned_to %}
+                  <div class="meal-person">{{ day.lunch.assigned_to }}</div>
+                {% endif %}
+              </div>
+              <div class="meal-actions">
+                <a href="{% url 'meal_update' day.lunch.pk %}" title="Bearbeiten">✏</a>
+                <a href="{% url 'meal_delete' day.lunch.pk %}" class="del" title="Löschen">✕</a>
+              </div>
+            {% else %}
+              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&meal_type=lunch" class="add-link">
+                ☀ + Mittag
+              </a>
+            {% endif %}
+          </div>
         </div>
-    {% endfor %}
+
+        <div class="meal-col">
+          <div class="meal-col-inner">
+            {% if day.dinner %}
+              <div class="meal-content">
+                <div class="meal-label">🌙 Abend</div>
+                <div class="meal-title">{{ day.dinner.recipe.title }}</div>
+                {% if day.dinner.assigned_to %}
+                  <div class="meal-person">{{ day.dinner.assigned_to }}</div>
+                {% endif %}
+              </div>
+              <div class="meal-actions">
+                <a href="{% url 'meal_update' day.dinner.pk %}" title="Bearbeiten">✏</a>
+                <a href="{% url 'meal_delete' day.dinner.pk %}" class="del" title="Löschen">✕</a>
+              </div>
+            {% else %}
+              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&meal_type=dinner" class="add-link">
+                🌙 + Abend
+              </a>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    {% endwith %}
+  {% empty %}
+    <div class="p-4 text-center text-muted">Keine Tage zum Anzeigen vorhanden.</div>
+  {% endfor %}
+
 </div>
 {% endblock %}

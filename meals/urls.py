@@ -8,6 +8,14 @@ from .views import (
     recipe_create,
     recipe_update,
     recipe_delete,
+    recipe_detail,
+    ingredient_add,
+    ingredient_delete,
+    ingredient_scale,
+    ingredient_to_shopping,
+    shopping_merge_quantity,
+    recipe_ai_suggest,
+    recipe_apply_suggestion,
 )
 
 urlpatterns = [
@@ -18,6 +26,14 @@ urlpatterns = [
 
     path("recipes/", recipe_list, name="recipe_list"),
     path("recipes/new/", recipe_create, name="recipe_create"),
+    path("recipes/<int:pk>/", recipe_detail, name="recipe_detail"),
     path("recipes/<int:pk>/edit/", recipe_update, name="recipe_update"),
     path("recipes/<int:pk>/delete/", recipe_delete, name="recipe_delete"),
+    path("recipes/<int:pk>/ingredients/add/", ingredient_add, name="ingredient_add"),
+    path("ingredients/<int:pk>/to-shopping/", ingredient_to_shopping, name="ingredient_to_shopping"),
+    path("ingredients/<int:pk>/delete/", ingredient_delete, name="ingredient_delete"),
+    path("ingredients/<int:pk>/scale/", ingredient_scale, name="ingredient_scale"),
+    path("shopping/<int:pk>/merge/", shopping_merge_quantity, name="shopping_merge_quantity"),
+    path("recipes/<int:pk>/ai-suggest/", recipe_ai_suggest, name="recipe_ai_suggest"),
+    path("recipes/<int:pk>/apply-suggestion/", recipe_apply_suggestion, name="recipe_apply_suggestion"),
 ]

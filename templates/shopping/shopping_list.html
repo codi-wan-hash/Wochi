@@ -9,24 +9,38 @@
     <a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>
 </div>
 
+{% if active_session %}
+    <div class="alert d-flex justify-content-between align-items-center py-2 mb-4" style="background:#fff8e6; border:1.5px solid #f5a623;">
+        <span>
+            🛒 <strong>Einkauf läuft</strong> · {{ active_session.store }}
+            <small class="text-muted ms-2">gestartet {{ active_session.started_at|date:"H:i" }} Uhr</small>
+        </span>
+        <form method="post" action="{% url 'end_shopping' %}" class="mb-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-dark">Einkauf beenden</button>
+        </form>
+    </div>
+{% else %}
+    <div class="mb-3">
+        <a href="{% url 'start_shopping' %}" class="btn btn-success btn-sm">🛒 Einkauf starten</a>
+    </div>
+{% endif %}
+
 <div class="mb-4">
-    <a href="{% url 'shopping_list' %}" class="btn btn-outline-secondary btn-sm {% if not status_filter %}active{% endif %}">Alle</a>
-    <a href="?status=open" class="btn btn-outline-secondary btn-sm {% if status_filter == 'open' %}active{% endif %}">Offen</a>
-    <a href="?status=bought" class="btn btn-outline-secondary btn-sm {% if status_filter == 'bought' %}active{% endif %}">Gekauft</a>
+    <button class="btn btn-outline-secondary btn-sm active" data-filter="all">Alle</button>
+    <button class="btn btn-outline-secondary btn-sm" data-filter="open">Offen</button>
+    <button class="btn btn-outline-secondary btn-sm" data-filter="bought">Gekauft</button>
 </div>
 
 {% if items %}
-    <div class="row g-3">
+    <div class="row g-3" id="shopping-list">
         {% for item in items %}
-            <div class="col-md-6">
+            <div class="col-md-6" id="item-{{ item.pk }}" data-bought="{{ item.is_bought|yesno:'true,false' }}">
                 <div class="card shadow-sm h-100 {% if item.is_bought %}border-success{% endif %}">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title {% if item.is_bought %}text-decoration-line-through text-muted{% endif %}">
-                                {{ item.name }}
-                            </h5>
-                            <span class="badge bg-secondary">{{ item.get_category_display }}</span>
-                        </div>
+                        <h5 class="card-title mb-2 {% if item.is_bought %}text-decoration-line-through text-muted{% endif %}">
+                            {{ item.name }}
+                        </h5>
 
                         {% if item.quantity %}
                             <p class="card-text text-muted mb-2">Menge: {{ item.quantity }}</p>
@@ -35,11 +49,19 @@
                         <p class="small text-muted">Hinzugefügt von: {{ item.added_by }}</p>
 
                         <div class="d-flex gap-2 flex-wrap">
-                            <a href="{% url 'shopping_toggle_bought' item.pk %}" class="btn btn-sm btn-success">
+                            <button
+                                class="btn btn-sm btn-success btn-toggle"
+                                data-url="{% url 'shopping_toggle_bought' item.pk %}"
+                                data-bought="{{ item.is_bought|yesno:'true,false' }}">
                                 {% if not item.is_bought %}Als gekauft markieren{% else %}Wieder offen{% endif %}
-                            </a>
+                            </button>
                             <a href="{% url 'shopping_update' item.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
-                            <a href="{% url 'shopping_delete' item.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
+                            <button
+                                class="btn btn-sm btn-outline-danger btn-delete"
+                                data-url="{% url 'shopping_delete' item.pk %}"
+                                data-name="{{ item.name }}">
+                                Löschen
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -47,8 +69,96 @@
         {% endfor %}
     </div>
 {% else %}
-    <div class="alert alert-info">
+    <div class="alert alert-info" id="empty-message">
         Noch keine Einkaufsartikel vorhanden.
     </div>
 {% endif %}
+
+<script>
+const csrfToken = "{{ csrf_token }}";
+let currentFilter = "all";
+
+function applyFilter(filter) {
+    const cards = document.querySelectorAll("#shopping-list > .col-md-6");
+    let visible = 0;
+    cards.forEach(card => {
+        const bought = card.dataset.bought === "true";
+        const show = filter === "all" || (filter === "bought" && bought) || (filter === "open" && !bought);
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+    });
+    const empty = document.getElementById("empty-message");
+    if (empty) empty.style.display = visible === 0 ? "" : "none";
+}
+
+function ajaxPost(url) {
+    return fetch(url, {
+        method: "POST",
+        headers: {
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    });
+}
+
+document.addEventListener("click", function (e) {
+    const toggleBtn = e.target.closest(".btn-toggle");
+    if (toggleBtn) {
+        e.preventDefault();
+        const url = toggleBtn.dataset.url;
+        ajaxPost(url)
+            .then(r => r.json())
+            .then(data => {
+                const card = toggleBtn.closest(".col-md-6");
+                const cardEl = card.querySelector(".card");
+                const title = card.querySelector(".card-title");
+
+                if (data.is_bought) {
+                    toggleBtn.textContent = "Wieder offen";
+                    cardEl.classList.add("border-success");
+                    title.classList.add("text-decoration-line-through", "text-muted");
+                } else {
+                    toggleBtn.textContent = "Als gekauft markieren";
+                    cardEl.classList.remove("border-success");
+                    title.classList.remove("text-decoration-line-through", "text-muted");
+                }
+                toggleBtn.dataset.bought = data.is_bought;
+                card.dataset.bought = data.is_bought;
+                applyFilter(currentFilter);
+            });
+    }
+
+    const filterBtn = e.target.closest("[data-filter]");
+    if (filterBtn) {
+        document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
+        filterBtn.classList.add("active");
+        currentFilter = filterBtn.dataset.filter;
+        applyFilter(currentFilter);
+    }
+
+    const deleteBtn = e.target.closest(".btn-delete");
+    if (deleteBtn) {
+        e.preventDefault();
+        const name = deleteBtn.dataset.name;
+        if (!confirm(`"${name}" wirklich löschen?`)) return;
+
+        const url = deleteBtn.dataset.url;
+        ajaxPost(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.deleted) {
+                    const card = deleteBtn.closest(".col-md-6");
+                    card.remove();
+
+                    const list = document.getElementById("shopping-list");
+                    if (list && list.children.length === 0) {
+                        list.insertAdjacentHTML("afterend",
+                            '<div class="alert alert-info">Noch keine Einkaufsartikel vorhanden.</div>');
+                        list.remove();
+                    }
+                }
+            });
+    }
+});
+</script>
 {% endblock %}

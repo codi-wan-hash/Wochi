@@ -7,7 +7,14 @@
             <div class="card-body p-4">
                 <h1 class="h3 mb-4">{{ title }}</h1>
 
-                <form method="post">
+                <datalist id="item-suggestions">
+                    {% for name in suggestions %}<option value="{{ name }}">{% endfor %}
+                </datalist>
+                <datalist id="quantity-suggestions">
+                    {% for q in quantity_suggestions %}<option value="{{ q }}">{% endfor %}
+                </datalist>
+
+                <form id="shopping-form" method="post">
                     {% csrf_token %}
                     {{ form.as_p }}
 
@@ -20,4 +27,85 @@
         </div>
     </div>
 </div>
+
+<!-- Duplikat-Modal -->
+<div class="modal fade" id="duplicateModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Bereits in der Einkaufsliste</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1"><strong id="modal-name"></strong> ist bereits auf der Einkaufsliste.</p>
+                <p class="text-muted small mb-0">
+                    Aktuelle Menge: <span id="modal-existing-qty">—</span><br>
+                    Neu hinzufügen: <span id="modal-new-qty">—</span>
+                </p>
+            </div>
+            <div class="modal-footer flex-column gap-2 align-items-stretch">
+                <button type="button" class="btn btn-success btn-sm" id="btn-merge">Menge erweitern</button>
+                <button type="button" class="btn btn-outline-dark btn-sm" id="btn-add-anyway">Trotzdem hinzufügen</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const csrfToken = "{{ csrf_token }}";
+const createUrl = "{% url 'shopping_create' %}";
+let duplicateModal;
+let pendingDuplicateData = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+    duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+});
+
+document.getElementById("shopping-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    const body = new FormData(this);
+    fetch(createUrl, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+        body: body,
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === "added") {
+            window.location.href = "{% url 'shopping_list' %}";
+        } else if (data.status === "duplicate") {
+            pendingDuplicateData = data;
+            document.getElementById("modal-name").textContent = data.name;
+            document.getElementById("modal-existing-qty").textContent = data.existing_quantity || "keine Angabe";
+            document.getElementById("modal-new-qty").textContent = data.new_quantity || "keine Angabe";
+            duplicateModal.show();
+        }
+    });
+});
+
+document.getElementById("btn-merge").addEventListener("click", () => {
+    const body = new FormData(document.getElementById("shopping-form"));
+    body.append("extra_quantity", pendingDuplicateData.new_quantity);
+    fetch(`/shopping/${pendingDuplicateData.existing_id}/merge/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+        body: body,
+    })
+    .then(() => { window.location.href = "{% url 'shopping_list' %}"; });
+});
+
+document.getElementById("btn-add-anyway").addEventListener("click", () => {
+    duplicateModal.hide();
+    const body = new FormData(document.getElementById("shopping-form"));
+    body.append("force", "true");
+    fetch(createUrl, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+        body: body,
+    })
+    .then(() => { window.location.href = "{% url 'shopping_list' %}"; });
+});
+</script>
 {% endblock %}

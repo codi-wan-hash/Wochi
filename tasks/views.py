@@ -1,4 +1,5 @@
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from households.utils import get_current_household
 from .models import Task
@@ -72,9 +73,11 @@ def task_delete(request, pk):
 
     if request.method == "POST":
         task.delete()
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"deleted": True})
         return redirect("task_list")
-    
-    return render(request, "tasks/task_confirm_delete.html",  {"task": task})
+
+    return render(request, "tasks/task_confirm_delete.html", {"task": task})
 
 @login_required
 def task_toggle_status(request, pk):
@@ -84,4 +87,6 @@ def task_toggle_status(request, pk):
     task.status = "done" if task.status == "open" else "open"
     task.save()
 
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"status": task.status})
     return redirect("task_list")

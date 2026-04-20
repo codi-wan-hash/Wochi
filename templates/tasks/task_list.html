@@ -10,17 +10,17 @@
 </div>
 
 <div class="mb-4">
-    <a href="{% url 'task_list' %}" class="btn btn-outline-secondary btn-sm {% if not status_filter %}active{% endif %}">Alle</a>
-    <a href="?status=open" class="btn btn-outline-secondary btn-sm {% if status_filter == 'open' %}active{% endif %}">Offen</a>
-    <a href="?status=done" class="btn btn-outline-secondary btn-sm {% if status_filter == 'done' %}active{% endif %}">Erledigt</a>
+    <button class="btn btn-outline-secondary btn-sm active" data-filter="all">Alle</button>
+    <button class="btn btn-outline-secondary btn-sm" data-filter="open">Offen</button>
+    <button class="btn btn-outline-secondary btn-sm" data-filter="done">Erledigt</button>
 </div>
 
 {% if tasks %}
-    <div class="row g-3">
+    <div class="row g-3" id="task-list">
         {% for task in tasks %}
-            <div class="col-md-6">
+            <div class="col-md-6" id="task-{{ task.pk }}" data-status="{{ task.status }}">
                 <div class="card shadow-sm h-100 {% if task.status == 'done' %}border-success{% endif %}">
-                    <div class="card body">
+                    <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <h5 class="card-title {% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}">
                                 {{ task.title }}
@@ -29,25 +29,38 @@
                                 {% if task.priority == 'high' %}bg-danger
                                 {% elif task.priority == 'medium' %}bg-warning text-dark
                                 {% else %}bg-secondary{% endif %}">
-                            </span>   
+                                {{ task.get_priority_display }}
+                            </span>
                         </div>
-                        
+
                         {% if task.description %}
                             <p class="card-text text-muted">{{ task.description }}</p>
                         {% endif %}
 
                         <ul class="list-unstyled small text-muted mb-3">
                             <li><strong>Fällig:</strong> {{ task.due_date }}</li>
-                            <li><strong>Zugewiesn an:</strong> {{ task.assigned_to|default:"Niemand" }}</li>
+                            <li><strong>Zugewiesen an:</strong>
+                                {% if task.assigned_to.all %}
+                                    {% for person in task.assigned_to.all %}{{ person }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                {% else %}
+                                    Niemand
+                                {% endif %}
+                            </li>
                             <li><strong>Status:</strong> {{ task.get_status_display }}</li>
                         </ul>
 
                         <div class="d-flex gap-2 flex-wrap">
-                            <a href="{% url 'task_toggle_status' task.pk %}" class="btn btn-sm btn-success">
+                            <button class="btn btn-sm btn-success btn-toggle"
+                                data-url="{% url 'task_toggle_status' task.pk %}"
+                                data-status="{{ task.status }}">
                                 {% if task.status == "open" %}Erledigen{% else %}Wieder öffnen{% endif %}
-                            </a>
-                            <a href="{% url 'task_update' task.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a> 
-                            <a href="{% url 'task_delete' task.pk %}" class="btn btn-sm btn-outline-primary">Löschen</a> 
+                            </button>
+                            <a href="{% url 'task_update' task.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                            <button class="btn btn-sm btn-outline-danger btn-delete"
+                                data-url="{% url 'task_delete' task.pk %}"
+                                data-name="{{ task.title }}">
+                                Löschen
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -55,8 +68,96 @@
         {% endfor %}
     </div>
 {% else %}
-    <div class="alert alert-info">
+    <div class="alert alert-info" id="empty-message">
         Noch keine Aufgaben.
     </div>
 {% endif %}
+
+<script>
+const csrfToken = "{{ csrf_token }}";
+let currentFilter = "all";
+
+function applyFilter(filter) {
+    const cards = document.querySelectorAll("#task-list > .col-md-6");
+    let visible = 0;
+    cards.forEach(card => {
+        const show = filter === "all" || card.dataset.status === filter;
+        card.style.display = show ? "" : "none";
+        if (show) visible++;
+    });
+    const empty = document.getElementById("empty-message");
+    if (empty) empty.style.display = visible === 0 ? "" : "none";
+}
+
+function ajaxPost(url) {
+    return fetch(url, {
+        method: "POST",
+        headers: {
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    });
+}
+
+document.addEventListener("click", function (e) {
+    const toggleBtn = e.target.closest(".btn-toggle");
+    if (toggleBtn) {
+        e.preventDefault();
+        ajaxPost(toggleBtn.dataset.url)
+            .then(r => r.json())
+            .then(data => {
+                const card = toggleBtn.closest(".col-md-6");
+                const cardEl = card.querySelector(".card");
+                const title = card.querySelector(".card-title");
+                const statusLi = card.querySelector("ul li:last-child");
+
+                if (data.status === "done") {
+                    toggleBtn.textContent = "Wieder öffnen";
+                    toggleBtn.dataset.status = "done";
+                    cardEl.classList.add("border-success");
+                    title.classList.add("text-decoration-line-through", "text-muted");
+                    if (statusLi) statusLi.innerHTML = "<strong>Status:</strong> Erledigt";
+                } else {
+                    toggleBtn.textContent = "Erledigen";
+                    toggleBtn.dataset.status = "open";
+                    cardEl.classList.remove("border-success");
+                    title.classList.remove("text-decoration-line-through", "text-muted");
+                    if (statusLi) statusLi.innerHTML = "<strong>Status:</strong> Offen";
+                }
+                card.dataset.status = data.status;
+                applyFilter(currentFilter);
+            });
+    }
+
+    const filterBtn = e.target.closest("[data-filter]");
+    if (filterBtn) {
+        document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
+        filterBtn.classList.add("active");
+        currentFilter = filterBtn.dataset.filter;
+        applyFilter(currentFilter);
+    }
+
+    const deleteBtn = e.target.closest(".btn-delete");
+    if (deleteBtn) {
+        e.preventDefault();
+        if (!confirm(`"${deleteBtn.dataset.name}" wirklich löschen?`)) return;
+
+        ajaxPost(deleteBtn.dataset.url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.deleted) {
+                    const card = deleteBtn.closest(".col-md-6");
+                    card.remove();
+
+                    const list = document.getElementById("task-list");
+                    if (list && list.children.length === 0) {
+                        list.insertAdjacentHTML("afterend",
+                            '<div class="alert alert-info">Noch keine Aufgaben.</div>');
+                        list.remove();
+                    }
+                }
+            });
+    }
+});
+</script>
 {% endblock %}

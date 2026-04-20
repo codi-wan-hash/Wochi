@@ -3,6 +3,6 @@ from .models import ShoppingItem
 
 @admin.register(ShoppingItem)
 class ShoppingItemAdmin(admin.ModelAdmin):
-    list_display = ("name", "quantity", "category", "is_bought", "household", "added_by")
-    list_filter = ("category", "is_bought", "household")
+    list_display = ("name", "quantity", "is_bought", "household", "added_by")
+    list_filter = ("is_bought", "household")
     search_fields = ("name", "quantity")
