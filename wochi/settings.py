@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "tasks",
     "meals",
     "shopping",
+    "api",
 
     "rest_framework",
     "rest_framework_simplejwt",

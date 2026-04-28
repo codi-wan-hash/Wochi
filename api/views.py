@@ -13,6 +13,7 @@ from households.utils import get_current_household, merge_quantities
 from meals.models import MealPlan, Recipe
 from shopping.models import ShoppingItem, Store, ShoppingSession, StoreItemOrder
 from tasks.models import Task
+from .models import PushToken
 
 from .serializers import (
     HouseholdSerializer,
@@ -28,6 +29,34 @@ from .serializers import (
 )
 
 User = get_user_model()
+
+
+# ── Push Notifications ────────────────────────────────────────────────────────
+
+def _send_push(tokens, title, body):
+    import requests as http
+    messages = [{"to": t, "title": title, "body": body, "sound": "default"} for t in tokens if t]
+    if not messages:
+        return
+    try:
+        http.post("https://exp.host/push/send", json=messages, timeout=5)
+    except Exception:
+        pass
+
+
+def _notify_household(household, exclude_user, title, body):
+    members = household.members.exclude(pk=exclude_user.pk)
+    tokens = list(PushToken.objects.filter(user__in=members).values_list("token", flat=True))
+    _send_push(tokens, title, body)
+
+
+@api_view(["POST"])
+def register_push_token(request):
+    token = request.data.get("token", "").strip()
+    if not token:
+        return Response({"detail": "Token erforderlich."}, status=status.HTTP_400_BAD_REQUEST)
+    PushToken.objects.update_or_create(user=request.user, defaults={"token": token})
+    return Response({"detail": "OK"})
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -170,7 +199,8 @@ class MealPlanListCreateView(APIView):
             return Response({"detail": "Kein Haushalt gefunden."}, status=status.HTTP_400_BAD_REQUEST)
         serializer = MealPlanSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(household=household)
+        meal = serializer.save(household=household)
+        _notify_household(household, request.user, "Essensplanung", f"{request.user.username} hat {meal.recipe.title} am {meal.date} geplant.")
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -420,7 +450,8 @@ class ShoppingListCreateView(APIView):
             return Response({"detail": "Kein Haushalt gefunden."}, status=status.HTTP_400_BAD_REQUEST)
         serializer = ShoppingItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(household=household, added_by=request.user)
+        item = serializer.save(household=household, added_by=request.user)
+        _notify_household(household, request.user, "Einkaufsliste", f"{request.user.username} hat „{item.name}" hinzugefügt.")
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 

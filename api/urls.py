@@ -4,6 +4,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
 
 urlpatterns = [
+    # Push
+    path("push/register/", views.register_push_token, name="api_push_register"),
+
     # Auth
     path("auth/register/", views.RegisterView.as_view(), name="api_register"),
     path("auth/login/", TokenObtainPairView.as_view(), name="api_login"),
