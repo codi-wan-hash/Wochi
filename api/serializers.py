@@ -35,13 +35,13 @@ class HouseholdSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Household
-        fields = ["id", "name", "members", "created_at"]
+        fields = ["id", "name", "members", "invite_token", "created_at"]
 
 
 class TaskSerializer(serializers.ModelSerializer):
     assigned_to = UserSerializer(many=True, read_only=True)
     assigned_to_ids = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=User.objects.all(), write_only=True,
+        many=True, queryset=User.objects.none(), write_only=True,
         source="assigned_to", required=False
     )
     created_by = UserSerializer(read_only=True)
@@ -52,6 +52,15 @@ class TaskSerializer(serializers.ModelSerializer):
             "id", "title", "description", "due_date", "priority",
             "status", "assigned_to", "assigned_to_ids", "created_by", "created_at",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request:
+            from households.utils import get_current_household
+            household = get_current_household(request.user)
+            if household:
+                self.fields["assigned_to_ids"].child_relation.queryset = household.members.all()
 
     def create(self, validated_data):
         assigned = validated_data.pop("assigned_to", [])
@@ -111,6 +120,7 @@ class MealPlanSerializer(serializers.ModelSerializer):
             household = get_current_household(request.user)
             if household:
                 self.fields["recipe_id"].queryset = Recipe.objects.filter(household=household)
+                self.fields["assigned_to_id"].queryset = household.members.all()
 
 
 class ShoppingItemSerializer(serializers.ModelSerializer):

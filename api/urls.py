@@ -16,7 +16,7 @@ urlpatterns = [
     # Households
     path("households/", views.HouseholdListView.as_view(), name="api_households"),
     path("households/members/", views.household_members, name="api_household_members"),
-    path("households/<int:pk>/join/", views.join_household, name="api_household_join"),
+    path("households/join/", views.join_household, name="api_household_join"),
 
     # Tasks
     path("tasks/", views.TaskListCreateView.as_view(), name="api_tasks"),

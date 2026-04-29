@@ -1,4 +1,5 @@
 import json
+import httpx
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -34,12 +35,11 @@ User = get_user_model()
 # ── Push Notifications ────────────────────────────────────────────────────────
 
 def _send_push(tokens, title, body):
-    import requests as http
     messages = [{"to": t, "title": title, "body": body, "sound": "default"} for t in tokens if t]
     if not messages:
         return
     try:
-        http.post("https://exp.host/push/send", json=messages, timeout=5)
+        httpx.post("https://exp.host/push/send", json=messages, timeout=5)
     except Exception:
         pass
 
@@ -88,11 +88,14 @@ class HouseholdListView(APIView):
 
 
 @api_view(["POST"])
-def join_household(request, pk):
+def join_household(request):
+    token = request.data.get("token", "").strip()
+    if not token:
+        return Response({"detail": "Einladungstoken erforderlich."}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        household = Household.objects.get(pk=pk)
-    except Household.DoesNotExist:
-        return Response({"detail": "Haushalt nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+        household = Household.objects.get(invite_token=token)
+    except (Household.DoesNotExist, Exception):
+        return Response({"detail": "Ungültiger Einladungstoken."}, status=status.HTTP_404_NOT_FOUND)
     household.members.add(request.user)
     return Response(HouseholdSerializer(household).data)
 
@@ -125,7 +128,7 @@ class TaskListCreateView(APIView):
         household = self._household(request)
         if not household:
             return Response({"detail": "Kein Haushalt gefunden."}, status=status.HTTP_400_BAD_REQUEST)
-        serializer = TaskSerializer(data=request.data)
+        serializer = TaskSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save(household=household, created_by=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -148,7 +151,7 @@ class TaskDetailView(APIView):
             task = self._get_task(request, pk)
         except Task.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = TaskSerializer(task, data=request.data, partial=True)
+        serializer = TaskSerializer(task, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -315,8 +318,8 @@ def recipe_ai_suggest(request, pk):
             temperature=0.7,
         )
         return Response(json.loads(response.choices[0].message.content))
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    except Exception:
+        return Response({"error": "KI-Vorschlag konnte nicht generiert werden."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["POST"])
@@ -332,16 +335,21 @@ def recipe_apply_suggestion(request, pk):
     ingredients = request.data.get("ingredients", [])
     save_instructions_only = request.data.get("save_instructions_only", False)
 
+    if not isinstance(ingredients, list) or len(ingredients) > 50:
+        return Response({"detail": "Ungültige Zutatenliste."}, status=status.HTTP_400_BAD_REQUEST)
+
     recipe.instructions = instructions
     recipe.save()
 
     if not save_instructions_only:
         recipe.ingredients.all().delete()
         for ing in ingredients:
+            if not isinstance(ing, dict):
+                continue
             Ingredient.objects.create(
                 recipe=recipe,
-                name=ing.get("name", ""),
-                quantity=ing.get("quantity", ""),
+                name=str(ing.get("name", ""))[:200],
+                quantity=str(ing.get("quantity", ""))[:100],
             )
 
     return Response(RecipeSerializer(recipe).data)
@@ -451,7 +459,7 @@ class ShoppingListCreateView(APIView):
         serializer = ShoppingItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         item = serializer.save(household=household, added_by=request.user)
-        _notify_household(household, request.user, "Einkaufsliste", f"{request.user.username} hat „{item.name}" hinzugefügt.")
+        _notify_household(household, request.user, "Einkaufsliste", f'{request.user.username} hat "{item.name}" hinzugefügt.')
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
