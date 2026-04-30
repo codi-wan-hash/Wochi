@@ -1,5 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.views import redirect_to_login
 from .models import Household
 
 
@@ -33,3 +34,19 @@ def choose_household(request):
                 error = "Bitte einen Einladungstoken eingeben."
 
     return render(request, "households/choose_household.html", {"error": error})
+
+
+def join_via_link(request, token):
+    household = get_object_or_404(Household, invite_token=token)
+
+    if not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+
+    if request.user.households.filter(pk=household.pk).exists():
+        return redirect("task_list")
+
+    if request.method == "POST":
+        household.members.add(request.user)
+        return redirect("task_list")
+
+    return render(request, "households/join_via_link.html", {"household": household})

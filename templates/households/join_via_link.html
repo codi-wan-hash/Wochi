@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 480px;">
+    <div class="card shadow-sm border-0 rounded-4 text-center p-4">
+        <div style="font-size: 3rem;">🏠</div>
+        <h2 class="fw-bold mt-3 mb-1">Einladung</h2>
+        <p class="text-muted mb-4">Du wurdest eingeladen, dem Haushalt beizutreten:</p>
+        <h4 class="fw-bold mb-4">{{ household.name }}</h4>
+
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-dark btn-lg w-100">Jetzt beitreten</button>
+        </form>
+        <a href="{% url 'home' %}" class="btn btn-link mt-2 text-muted">Abbrechen</a>
+    </div>
+</div>
+{% endblock %}

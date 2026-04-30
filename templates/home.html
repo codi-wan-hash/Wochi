@@ -8,12 +8,24 @@
     </p>
 
     {% if household %}
-        <p class="text-muted">
+        <p class="text-muted mb-1">
             Aktiver Haushalt: <strong>{{ household.name }}</strong>
-            &nbsp;·&nbsp;
-            <span class="text-muted small">Einladungstoken:</span>
-            <code class="user-select-all small">{{ household.invite_token }}</code>
         </p>
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="text-muted small">Einladungslink:</span>
+            <code class="small text-muted" id="invite-link">{{ request.scheme }}://{{ request.get_host }}{% url 'join_via_link' household.invite_token %}</code>
+            <button class="btn btn-outline-secondary btn-sm" onclick="copyInviteLink()">Kopieren</button>
+            <span id="copy-confirm" class="text-success small" style="display:none;">✓ Kopiert!</span>
+        </div>
+        <script>
+        function copyInviteLink() {
+            navigator.clipboard.writeText(document.getElementById('invite-link').textContent).then(() => {
+                const c = document.getElementById('copy-confirm');
+                c.style.display = 'inline';
+                setTimeout(() => c.style.display = 'none', 2000);
+            });
+        }
+        </script>
     {% else %}
         <div class="alert alert-warning">
             Du bist aktuell noch keinem Haushalt zugeordnet.
