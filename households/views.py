@@ -8,25 +8,28 @@ def choose_household(request):
     if request.user.households.exists():
         return redirect("task_list")
 
-    households = Household.objects.all()
+    error = None
 
     if request.method == "POST":
         action = request.POST.get("action")
 
         if action == "create":
-            name = request.POST.get("name")
+            name = request.POST.get("name", "").strip()
             if name:
                 household = Household.objects.create(name=name)
                 household.members.add(request.user)
                 return redirect("task_list")
 
         elif action == "join":
-            household_id = request.POST.get("household_id")
-            if household_id:
-                household = get_object_or_404(Household, id=household_id)
-                household.members.add(request.user)
-                return redirect("task_list")
+            token = request.POST.get("invite_token", "").strip()
+            if token:
+                try:
+                    household = Household.objects.get(invite_token=token)
+                    household.members.add(request.user)
+                    return redirect("task_list")
+                except Household.DoesNotExist:
+                    error = "Ungültiger Einladungstoken."
+            else:
+                error = "Bitte einen Einladungstoken eingeben."
 
-    return render(request, "households/choose_household.html", {
-        "households": households,
-    })
+    return render(request, "households/choose_household.html", {"error": error})
