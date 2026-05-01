@@ -18,7 +18,12 @@
     <!-- Zutaten -->
     <div class="col-md-7">
         <div class="card shadow-sm">
-            <div class="card-header fw-semibold">Zutaten</div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">Zutaten</span>
+                <button class="btn btn-outline-success btn-sm" id="btn-all-to-shopping">
+                    🛒 Alle in Einkaufsliste
+                </button>
+            </div>
             <ul class="list-group list-group-flush" id="ingredient-list">
                 {% for ingredient in recipe.ingredients.all %}
                     <li class="list-group-item d-flex justify-content-between align-items-center" id="ingredient-{{ ingredient.pk }}">
@@ -150,10 +155,30 @@ const addIngredientUrl = "{% url 'ingredient_add' recipe.pk %}";
 const saveInstructionsUrl = "{% url 'recipe_update' recipe.pk %}";
 const aiSuggestUrl = "{% url 'recipe_ai_suggest' recipe.pk %}";
 const applyUrl = "{% url 'recipe_apply_suggestion' recipe.pk %}";
+const allToShoppingUrl = "{% url 'recipe_all_to_shopping' recipe.pk %}";
 let duplicateModal;
 
 document.addEventListener("DOMContentLoaded", () => {
     duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+
+    document.getElementById("btn-all-to-shopping").addEventListener("click", function () {
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = "…";
+        ajaxPost(allToShoppingUrl, new FormData())
+            .then(r => r.json())
+            .then(data => {
+                const msg = data.added === 0 && data.merged === 0
+                    ? "Keine Zutaten vorhanden."
+                    : `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
+                btn.textContent = "✓ " + msg;
+                btn.classList.replace("btn-outline-success", "btn-success");
+            })
+            .catch(() => {
+                btn.textContent = "Fehler";
+                btn.disabled = false;
+            });
+    });
 });
 
 function ajaxPost(url, body) {

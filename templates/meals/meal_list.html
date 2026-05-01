@@ -101,9 +101,14 @@
   }
 </style>
 
-<div class="mb-4">
-  <h1 class="h2 mb-1">Essensplanung</h1>
-  <p class="text-muted mb-0">{{ household.name }}</p>
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h1 class="h2 mb-1">Essensplanung</h1>
+    <p class="text-muted mb-0">{{ household.name }}</p>
+  </div>
+  <button class="btn btn-outline-success btn-sm" id="btn-week-to-shopping">
+    🛒 Zutaten der Woche → Einkaufsliste
+  </button>
 </div>
 
 <div class="card shadow-sm overflow-hidden">
@@ -181,4 +186,28 @@
   {% endfor %}
 
 </div>
+<script>
+const csrfToken = "{{ csrf_token }}";
+document.getElementById("btn-week-to-shopping").addEventListener("click", function () {
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = "…";
+    fetch("{% url 'meals_week_to_shopping' %}", {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+    })
+    .then(r => r.json())
+    .then(data => {
+        const msg = data.added === 0 && data.merged === 0
+            ? "Keine Zutaten gefunden."
+            : `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
+        btn.textContent = "✓ " + msg;
+        btn.classList.replace("btn-outline-success", "btn-success");
+    })
+    .catch(() => {
+        btn.textContent = "Fehler";
+        btn.disabled = false;
+    });
+});
+</script>
 {% endblock %}

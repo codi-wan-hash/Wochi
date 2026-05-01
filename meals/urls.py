@@ -4,11 +4,13 @@ from .views import (
     meal_create,
     meal_update,
     meal_delete,
+    meals_week_to_shopping,
     recipe_list,
     recipe_create,
     recipe_update,
     recipe_delete,
     recipe_detail,
+    recipe_all_to_shopping,
     ingredient_add,
     ingredient_delete,
     ingredient_scale,
@@ -20,6 +22,7 @@ from .views import (
 
 urlpatterns = [
     path("", meal_list, name="meal_list"),
+    path("to-shopping/", meals_week_to_shopping, name="meals_week_to_shopping"),
     path("new/", meal_create, name="meal_create"),
     path("<int:pk>/edit/", meal_update, name="meal_update"),
     path("<int:pk>/delete/", meal_delete, name="meal_delete"),
@@ -34,6 +37,7 @@ urlpatterns = [
     path("ingredients/<int:pk>/delete/", ingredient_delete, name="ingredient_delete"),
     path("ingredients/<int:pk>/scale/", ingredient_scale, name="ingredient_scale"),
     path("shopping/<int:pk>/merge/", shopping_merge_quantity, name="shopping_merge_quantity"),
+    path("recipes/<int:pk>/all-to-shopping/", recipe_all_to_shopping, name="recipe_all_to_shopping"),
     path("recipes/<int:pk>/ai-suggest/", recipe_ai_suggest, name="recipe_ai_suggest"),
     path("recipes/<int:pk>/apply-suggestion/", recipe_apply_suggestion, name="recipe_apply_suggestion"),
 ]

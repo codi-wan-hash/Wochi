@@ -319,6 +319,74 @@ def ingredient_to_shopping(request, pk):
 
 
 @login_required
+def recipe_all_to_shopping(request, pk):
+    household = get_current_household(request.user)
+    recipe = get_object_or_404(Recipe, pk=pk, household=household)
+
+    if request.method != "POST":
+        return redirect("recipe_detail", pk=pk)
+
+    added, merged = 0, 0
+    for ingredient in recipe.ingredients.all():
+        existing = ShoppingItem.objects.filter(
+            household=household, name__iexact=ingredient.name, is_bought=False
+        ).first()
+        if existing:
+            existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
+            existing.save()
+            merged += 1
+        else:
+            ShoppingItem.objects.create(
+                household=household,
+                name=ingredient.name,
+                quantity=ingredient.quantity,
+                added_by=request.user,
+            )
+            added += 1
+    return JsonResponse({"added": added, "merged": merged})
+
+
+@login_required
+def meals_week_to_shopping(request):
+    household = get_current_household(request.user)
+    if not household:
+        return JsonResponse({"error": "Kein Haushalt"}, status=400)
+
+    if request.method != "POST":
+        return redirect("meal_list")
+
+    from datetime import date, timedelta
+    today = date.today()
+    monday = today - timedelta(days=(today.weekday()))
+    date_from = monday
+    date_to = monday + timedelta(days=13)
+
+    meals = MealPlan.objects.filter(
+        household=household, date__gte=date_from, date__lte=date_to,
+    ).select_related("recipe").prefetch_related("recipe__ingredients")
+
+    added, merged = 0, 0
+    for meal in meals:
+        for ingredient in meal.recipe.ingredients.all():
+            existing = ShoppingItem.objects.filter(
+                household=household, name__iexact=ingredient.name, is_bought=False
+            ).first()
+            if existing:
+                existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
+                existing.save()
+                merged += 1
+            else:
+                ShoppingItem.objects.create(
+                    household=household,
+                    name=ingredient.name,
+                    quantity=ingredient.quantity,
+                    added_by=request.user,
+                )
+                added += 1
+    return JsonResponse({"added": added, "merged": merged})
+
+
+@login_required
 def shopping_merge_quantity(request, pk):
     household = get_current_household(request.user)
     item = get_object_or_404(ShoppingItem, pk=pk, household=household)
