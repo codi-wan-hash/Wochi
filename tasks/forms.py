@@ -9,18 +9,20 @@ class TaskForm(forms.ModelForm):
 
     class Meta:
         model = Task
-        fields = ["title", "description", "due_date", "priority", "assigned_to"]
+        fields = ["title", "description", "due_date", "priority", "recurrence", "assigned_to"]
         labels = {
             "title": "Titel",
             "description": "Beschreibung",
             "due_date": "Fälligkeitsdatum",
             "priority": "Priorität",
+            "recurrence": "Wiederholung",
             "assigned_to": "Zugewiesen an",
         }
         widgets = {
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "priority": forms.Select(attrs={"class": "form-select"}),
+            "recurrence": forms.Select(attrs={"class": "form-select"}),
             "assigned_to": forms.CheckboxSelectMultiple(),
         }
 

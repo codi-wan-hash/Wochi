@@ -47,6 +47,13 @@
                                 {% endif %}
                             </li>
                             <li><strong>Status:</strong> {{ task.get_status_display }}</li>
+                            {% if task.recurrence != "none" %}
+                            <li><strong>Wiederholung:</strong>
+                                <span class="badge bg-purple text-white" style="background-color:#7c3aed;">
+                                    ↻ {{ task.get_recurrence_display }}
+                                </span>
+                            </li>
+                            {% endif %}
                         </ul>
 
                         <div class="d-flex gap-2 flex-wrap">
