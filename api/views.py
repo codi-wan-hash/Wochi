@@ -122,18 +122,7 @@ class TaskListCreateView(APIView):
         qs = Task.objects.filter(household=household).select_related("created_by").prefetch_related("assigned_to")
         if status_filter in ("open", "done"):
             qs = qs.filter(status=status_filter)
-        try:
-            limit = min(int(request.query_params.get("limit", 100)), 200)
-            offset = int(request.query_params.get("offset", 0))
-        except (ValueError, TypeError):
-            limit, offset = 100, 0
-        total = qs.count()
-        page = qs[offset: offset + limit]
-        return Response({
-            "count": total,
-            "next": offset + limit < total,
-            "results": TaskSerializer(page, many=True).data,
-        })
+        return Response(TaskSerializer(qs[:100], many=True).data)
 
     def post(self, request):
         household = self._household(request)
