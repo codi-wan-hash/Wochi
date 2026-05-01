@@ -5,26 +5,11 @@ from django.shortcuts import render, redirect, get_object_or_404
 from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions, merge_quantities
 from .models import ShoppingItem, Store, ShoppingSession, StoreItemOrder
 from .forms import ShoppingItemForm
+from .utils import sort_by_store as _sort_by_store
 
 
 def _active_session(household):
     return ShoppingSession.objects.filter(household=household, ended_at__isnull=True).first()
-
-
-def _sort_by_store(items, store):
-    orders = {
-        o.item_name: o.avg_position
-        for o in StoreItemOrder.objects.filter(store=store)
-    }
-    known, unknown = [], []
-    for item in items:
-        key = item.name.lower().strip()
-        if key in orders:
-            known.append((orders[key], item))
-        else:
-            unknown.append(item)
-    known.sort(key=lambda x: x[0])
-    return [item for _, item in known] + unknown
 
 
 @login_required
@@ -32,7 +17,7 @@ def shopping_list(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "shopping/choose_household.html")
+        return redirect("choose_household")
 
     items = list(ShoppingItem.objects.filter(household=household))
     session = _active_session(household)
@@ -54,7 +39,7 @@ def shopping_create(request):
     household = get_current_household(request.user)
 
     if not household:
-        return render(request, "shopping/choose_household.html")
+        return redirect("choose_household")
 
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 

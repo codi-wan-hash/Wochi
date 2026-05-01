@@ -50,7 +50,7 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             "id", "title", "description", "due_date", "priority",
-            "status", "assigned_to", "assigned_to_ids", "created_by", "created_at",
+            "status", "recurrence", "assigned_to", "assigned_to_ids", "created_by", "created_at",
         ]
 
     def __init__(self, *args, **kwargs):

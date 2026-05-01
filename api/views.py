@@ -94,7 +94,7 @@ def join_household(request):
         return Response({"detail": "Einladungstoken erforderlich."}, status=status.HTTP_400_BAD_REQUEST)
     try:
         household = Household.objects.get(invite_token=token)
-    except (Household.DoesNotExist, Exception):
+    except Household.DoesNotExist:
         return Response({"detail": "Ungültiger Einladungstoken."}, status=status.HTTP_404_NOT_FOUND)
     household.members.add(request.user)
     return Response(HouseholdSerializer(household).data)
@@ -122,7 +122,18 @@ class TaskListCreateView(APIView):
         qs = Task.objects.filter(household=household).select_related("created_by").prefetch_related("assigned_to")
         if status_filter in ("open", "done"):
             qs = qs.filter(status=status_filter)
-        return Response(TaskSerializer(qs, many=True).data)
+        try:
+            limit = min(int(request.query_params.get("limit", 100)), 200)
+            offset = int(request.query_params.get("offset", 0))
+        except (ValueError, TypeError):
+            limit, offset = 100, 0
+        total = qs.count()
+        page = qs[offset: offset + limit]
+        return Response({
+            "count": total,
+            "next": offset + limit < total,
+            "results": TaskSerializer(page, many=True).data,
+        })
 
     def post(self, request):
         household = self._household(request)
@@ -130,7 +141,11 @@ class TaskListCreateView(APIView):
             return Response({"detail": "Kein Haushalt gefunden."}, status=status.HTTP_400_BAD_REQUEST)
         serializer = TaskSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        serializer.save(household=household, created_by=request.user)
+        task = serializer.save(household=household, created_by=request.user)
+        assigned = task.assigned_to.exclude(pk=request.user.pk)
+        if assigned.exists():
+            tokens = list(PushToken.objects.filter(user__in=assigned).values_list("token", flat=True))
+            _send_push(tokens, "Neue Aufgabe", f"{request.user.username} hat dir '{task.title}' zugewiesen.")
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -172,8 +187,22 @@ def task_toggle(request, pk):
         task = Task.objects.get(pk=pk, household=household)
     except Task.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
-    task.status = "done" if task.status == "open" else "open"
+    was_open = task.status == "open"
+    task.status = "done" if was_open else "open"
     task.save()
+    if was_open and task.recurrence != "none":
+        next_due = task.next_due_date()
+        if next_due:
+            new_task = Task.objects.create(
+                household=household,
+                title=task.title,
+                description=task.description,
+                due_date=next_due,
+                priority=task.priority,
+                recurrence=task.recurrence,
+                created_by=request.user,
+            )
+            new_task.assigned_to.set(task.assigned_to.all())
     return Response(TaskSerializer(task).data)
 
 
@@ -420,20 +449,76 @@ def _active_session(household):
     return ShoppingSession.objects.filter(household=household, ended_at__isnull=True).first()
 
 
-def _sort_by_store(items, store):
-    orders = {
-        o.item_name: o.avg_position
-        for o in StoreItemOrder.objects.filter(store=store)
-    }
-    known, unknown = [], []
-    for item in items:
-        key = item.name.lower().strip()
-        if key in orders:
-            known.append((orders[key], item))
+from shopping.utils import sort_by_store as _sort_by_store
+
+
+@api_view(["POST"])
+def recipe_all_ingredients_to_shopping(request, pk):
+    from meals.models import Recipe, Ingredient
+    household = get_current_household(request.user)
+    try:
+        recipe = Recipe.objects.get(pk=pk, household=household)
+    except Recipe.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    added, merged = 0, 0
+    for ingredient in recipe.ingredients.all():
+        existing = ShoppingItem.objects.filter(
+            household=household, name__iexact=ingredient.name, is_bought=False
+        ).first()
+        if existing:
+            from households.utils import merge_quantities
+            existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
+            existing.save()
+            merged += 1
         else:
-            unknown.append(item)
-    known.sort(key=lambda x: x[0])
-    return [item for _, item in known] + unknown
+            ShoppingItem.objects.create(
+                household=household,
+                name=ingredient.name,
+                quantity=ingredient.quantity,
+                added_by=request.user,
+            )
+            added += 1
+    return Response({"added": added, "merged": merged})
+
+
+@api_view(["POST"])
+def meals_week_to_shopping(request):
+    from meals.models import MealPlan
+    from households.utils import merge_quantities
+    household = get_current_household(request.user)
+    if not household:
+        return Response({"detail": "Kein Haushalt."}, status=status.HTTP_400_BAD_REQUEST)
+
+    date_from = request.data.get("from")
+    date_to = request.data.get("to")
+    meals = MealPlan.objects.filter(
+        household=household,
+    ).select_related("recipe").prefetch_related("recipe__ingredients")
+    if date_from:
+        meals = meals.filter(date__gte=date_from)
+    if date_to:
+        meals = meals.filter(date__lte=date_to)
+
+    added, merged = 0, 0
+    for meal in meals:
+        for ingredient in meal.recipe.ingredients.all():
+            existing = ShoppingItem.objects.filter(
+                household=household, name__iexact=ingredient.name, is_bought=False
+            ).first()
+            if existing:
+                existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
+                existing.save()
+                merged += 1
+            else:
+                ShoppingItem.objects.create(
+                    household=household,
+                    name=ingredient.name,
+                    quantity=ingredient.quantity,
+                    added_by=request.user,
+                )
+                added += 1
+    return Response({"added": added, "merged": merged})
 
 
 class ShoppingListCreateView(APIView):

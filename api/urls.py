@@ -25,12 +25,14 @@ urlpatterns = [
 
     # Meals
     path("meals/", views.MealPlanListCreateView.as_view(), name="api_meals"),
+    path("meals/to-shopping/", views.meals_week_to_shopping, name="api_meals_to_shopping"),
     path("meals/<int:pk>/", views.MealPlanDetailView.as_view(), name="api_meal_detail"),
 
     # Recipes
     path("recipes/", views.RecipeListView.as_view(), name="api_recipes"),
     path("recipes/<int:pk>/", views.RecipeDetailView.as_view(), name="api_recipe_detail"),
     path("recipes/<int:pk>/ingredients/", views.IngredientListCreateView.as_view(), name="api_recipe_ingredients"),
+    path("recipes/<int:pk>/to-shopping/", views.recipe_all_ingredients_to_shopping, name="api_recipe_to_shopping"),
     path("recipes/<int:pk>/ai-suggest/", views.recipe_ai_suggest, name="api_recipe_ai_suggest"),
     path("recipes/<int:pk>/apply-suggestion/", views.recipe_apply_suggestion, name="api_recipe_apply_suggestion"),
 
