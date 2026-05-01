@@ -419,8 +419,10 @@ def ingredient_to_shopping(request, pk):
     if existing:
         return Response({
             "status": "duplicate",
-            "existing": ShoppingItemSerializer(existing).data,
-            "ingredient": IngredientSerializer(ingredient).data,
+            "name": ingredient.name,
+            "existing_id": existing.pk,
+            "existing_quantity": existing.quantity,
+            "new_quantity": ingredient.quantity,
         })
 
     item = ShoppingItem.objects.create(
