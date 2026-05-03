@@ -64,6 +64,7 @@ def register_push_token(request):
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+    throttle_scope = "auth"
 
 
 class MeView(APIView):
