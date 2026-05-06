@@ -127,6 +127,44 @@ def meal_delete(request, pk):
 
 
 @login_required
+def meal_history(request):
+    household = get_current_household(request.user)
+
+    if not household:
+        return redirect("choose_household")
+
+    today = timezone.localdate()
+    date_to = today - timedelta(days=1)
+    date_from = today - timedelta(days=14)
+
+    meals = MealPlan.objects.filter(
+        household=household,
+        date__gte=date_from,
+        date__lte=date_to,
+    ).select_related("recipe", "assigned_to")
+
+    meals_by_date = {}
+    for meal in meals:
+        meals_by_date.setdefault(meal.date, {})
+        meals_by_date[meal.date][meal.meal_type] = meal
+
+    history_days = []
+    current = date_to
+    while current >= date_from:
+        history_days.append({
+            "date": current,
+            "lunch": meals_by_date.get(current, {}).get("lunch"),
+            "dinner": meals_by_date.get(current, {}).get("dinner"),
+        })
+        current -= timedelta(days=1)
+
+    return render(request, "meals/meal_history.html", {
+        "household": household,
+        "history_days": history_days,
+    })
+
+
+@login_required
 def recipe_list(request):
     household = get_current_household(request.user)
 

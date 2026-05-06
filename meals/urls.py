@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     meal_list,
+    meal_history,
     meal_create,
     meal_update,
     meal_delete,
@@ -22,6 +23,7 @@ from .views import (
 
 urlpatterns = [
     path("", meal_list, name="meal_list"),
+    path("history/", meal_history, name="meal_history"),
     path("to-shopping/", meals_week_to_shopping, name="meals_week_to_shopping"),
     path("new/", meal_create, name="meal_create"),
     path("<int:pk>/edit/", meal_update, name="meal_update"),

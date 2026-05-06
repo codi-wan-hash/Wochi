@@ -106,9 +106,13 @@
     <h1 class="h2 mb-1">Essensplanung</h1>
     <p class="text-muted mb-0">{{ household.name }}</p>
   </div>
-  <button class="btn btn-outline-success btn-sm" id="btn-week-to-shopping">
-    🛒 Zutaten der Woche → Einkaufsliste
-  </button>
+  <div class="d-flex gap-2 align-items-center">
+    <a href="{% url 'meal_list' %}" class="btn btn-secondary btn-sm">Planung</a>
+    <a href="{% url 'meal_history' %}" class="btn btn-outline-secondary btn-sm">Historie</a>
+    <button class="btn btn-outline-success btn-sm" id="btn-week-to-shopping">
+      🛒 Zutaten der Woche → Einkaufsliste
+    </button>
+  </div>
 </div>
 
 <div class="card shadow-sm overflow-hidden">
