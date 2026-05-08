@@ -146,6 +146,8 @@ LOGOUT_REDIRECT_URL = "login"
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.onrender.com",
+    "https://wochii.de",
+    "https://www.wochii.de",
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -185,7 +187,8 @@ SIMPLE_JWT = {
 }
 
 _cors_default = "http://localhost:8081,http://localhost:19006" if DEBUG else ""
+_cors_extra = "https://wochii.de,https://www.wochii.de"
 CORS_ALLOWED_ORIGINS = [
-    o for o in os.environ.get("CORS_ALLOWED_ORIGINS", _cors_default).split(",") if o
+    o for o in (os.environ.get("CORS_ALLOWED_ORIGINS", _cors_default) + "," + _cors_extra).split(",") if o
 ]
 CORS_ALLOW_ALL_ORIGINS = False
