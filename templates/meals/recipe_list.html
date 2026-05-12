@@ -6,24 +6,42 @@
         <h1 class="h2 mb-1">Gerichte</h1>
         <p class="text-muted mb-0">Eure gespeicherten Mahlzeiten</p>
     </div>
-    <a href="{% url 'recipe_create' %}" class="btn btn-dark">+ Gericht hinzufügen</a>
+    <div class="d-flex gap-2 align-items-center">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-generate-all" style="display:none;">
+            ✨ Bilder generieren
+        </button>
+        <a href="{% url 'recipe_create' %}" class="btn btn-dark">+ Gericht hinzufügen</a>
+    </div>
 </div>
 
 {% if recipes %}
-    <div class="row g-3">
+    <div class="row g-3" id="recipe-grid">
         {% for recipe in recipes %}
-            <div class="col-md-6">
-                <div class="card shadow-sm h-100">
+            <div class="col-md-6" id="recipe-card-{{ recipe.pk }}">
+                <div class="card shadow-sm h-100 overflow-hidden">
+                    {% if recipe.image %}
+                        <img src="{{ recipe.image }}"
+                             class="card-img-top"
+                             alt="{{ recipe.title }}"
+                             style="height:180px;object-fit:cover;">
+                    {% else %}
+                        <div class="recipe-img-placeholder d-flex align-items-center justify-content-center"
+                             data-no-image
+                             data-recipe-id="{{ recipe.pk }}"
+                             data-generate-url="{% url 'recipe_generate_image' recipe.pk %}"
+                             style="height:180px;background:var(--color-accent);">
+                            <span class="text-muted small">Kein Bild</span>
+                        </div>
+                    {% endif %}
                     <div class="card-body">
                         <h5 class="card-title">{{ recipe.title }}</h5>
                         {% if recipe.notes %}
-                            <p class="card-text text-muted">{{ recipe.notes }}</p>
+                            <p class="card-text text-muted small">{{ recipe.notes }}</p>
                         {% endif %}
                         <p class="small text-muted">Erstellt von: {{ recipe.created_by }}</p>
-
                         <div class="d-flex gap-2">
                             <a href="{% url 'recipe_detail' recipe.pk %}" class="btn btn-sm btn-dark">Zutaten</a>
-                            <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
+                            <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-sm btn-outline-secondary">Bearbeiten</a>
                             <a href="{% url 'recipe_delete' recipe.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
                         </div>
                     </div>
@@ -36,4 +54,58 @@
         Noch keine Gerichte angelegt.
     </div>
 {% endif %}
+
+<script>
+const csrfToken = "{{ csrf_token }}";
+
+document.addEventListener("DOMContentLoaded", () => {
+    const placeholders = Array.from(document.querySelectorAll("[data-no-image]"));
+    const btn = document.getElementById("btn-generate-all");
+    if (!btn) return;
+
+    if (placeholders.length > 0) {
+        btn.style.display = "";
+        btn.textContent = `✨ Bilder generieren (${placeholders.length})`;
+    }
+
+    btn.addEventListener("click", async function () {
+        const items = Array.from(document.querySelectorAll("[data-no-image]"));
+        const total = items.length;
+        if (total === 0) return;
+        btn.disabled = true;
+
+        for (let i = 0; i < items.length; i++) {
+            const placeholder = items[i];
+            const pk = placeholder.dataset.recipeId;
+            const generateUrl = placeholder.dataset.generateUrl;
+
+            btn.textContent = `✨ ${i + 1} / ${total} generiert…`;
+            placeholder.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary m-auto"></div>';
+
+            try {
+                const resp = await fetch(generateUrl, {
+                    method: "POST",
+                    headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+                });
+                const data = await resp.json();
+                if (data.image_url) {
+                    const img = document.createElement("img");
+                    img.src = data.image_url;
+                    img.className = "card-img-top";
+                    img.alt = "";
+                    img.style.cssText = "height:180px;object-fit:cover;";
+                    placeholder.replaceWith(img);
+                } else {
+                    placeholder.innerHTML = `<span class="text-muted small">${data.error || "Fehler"}</span>`;
+                }
+            } catch {
+                placeholder.innerHTML = '<span class="text-muted small">Fehler</span>';
+            }
+        }
+
+        btn.textContent = "✓ Alle Bilder generiert";
+        btn.style.display = "none";
+    });
+});
+</script>
 {% endblock %}

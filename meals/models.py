@@ -13,6 +13,7 @@ class Recipe(models.Model):
         on_delete=models.CASCADE,
         related_name="created_recipes"
     )
+    image = models.URLField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
