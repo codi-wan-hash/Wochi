@@ -149,7 +149,6 @@ import cloudinary
 cloudinary.config(cloudinary_url=CLOUDINARY_URL)
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.onrender.com",
     "https://wochii.de",
     "https://www.wochii.de",
 ]
