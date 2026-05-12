@@ -482,6 +482,77 @@ Antworte ausschließlich mit folgendem JSON:
         return JsonResponse({"error": str(e)}, status=500)
 
 
+def _generate_and_store_recipe_image(recipe):
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=(
+            f"Professional food photography of '{recipe.title}', restaurant quality dish, "
+            "warm natural lighting, overhead shot on a wooden table, minimal props, "
+            "clean background, appetizing presentation"
+        ),
+        size="1024x1024",
+        quality="standard",
+        n=1,
+    )
+    dalle_url = response.data[0].url
+
+    cloudinary_url = getattr(settings, "CLOUDINARY_URL", "")
+    if cloudinary_url:
+        import cloudinary.uploader
+        result = cloudinary.uploader.upload(
+            dalle_url,
+            folder="wochi/recipes",
+            public_id=f"recipe_{recipe.pk}",
+            overwrite=True,
+        )
+        recipe.image = result["secure_url"]
+    else:
+        recipe.image = dalle_url
+
+    recipe.save(update_fields=["image"])
+
+
+@login_required
+def recipe_generate_image(request, pk):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+    household = get_current_household(request.user)
+    recipe = get_object_or_404(Recipe, pk=pk, household=household)
+    if not settings.OPENAI_API_KEY:
+        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert."}, status=503)
+    try:
+        _generate_and_store_recipe_image(recipe)
+        return JsonResponse({"image_url": recipe.image})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@login_required
+def recipe_upload_image(request, pk):
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
+    household = get_current_household(request.user)
+    recipe = get_object_or_404(Recipe, pk=pk, household=household)
+    file = request.FILES.get("image")
+    if not file:
+        return JsonResponse({"error": "Keine Datei übermittelt."}, status=400)
+    try:
+        import cloudinary.uploader
+        result = cloudinary.uploader.upload(
+            file,
+            folder="wochi/recipes",
+            public_id=f"recipe_{recipe.pk}",
+            overwrite=True,
+        )
+        recipe.image = result["secure_url"]
+        recipe.save(update_fields=["image"])
+        return JsonResponse({"image_url": recipe.image})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
 @login_required
 def recipe_apply_suggestion(request, pk):
     household = get_current_household(request.user)

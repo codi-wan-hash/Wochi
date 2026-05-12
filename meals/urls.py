@@ -19,6 +19,8 @@ from .views import (
     shopping_merge_quantity,
     recipe_ai_suggest,
     recipe_apply_suggestion,
+    recipe_generate_image,
+    recipe_upload_image,
 )
 
 urlpatterns = [
@@ -42,4 +44,6 @@ urlpatterns = [
     path("recipes/<int:pk>/all-to-shopping/", recipe_all_to_shopping, name="recipe_all_to_shopping"),
     path("recipes/<int:pk>/ai-suggest/", recipe_ai_suggest, name="recipe_ai_suggest"),
     path("recipes/<int:pk>/apply-suggestion/", recipe_apply_suggestion, name="recipe_apply_suggestion"),
+    path("recipes/<int:pk>/generate-image/", recipe_generate_image, name="recipe_generate_image"),
+    path("recipes/<int:pk>/upload-image/", recipe_upload_image, name="recipe_upload_image"),
 ]

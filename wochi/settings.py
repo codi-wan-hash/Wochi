@@ -142,7 +142,11 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 LOGIN_REDIRECT_URL = "home"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 LOGOUT_REDIRECT_URL = "login"
+
+import cloudinary
+cloudinary.config(cloudinary_url=CLOUDINARY_URL)
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.onrender.com",

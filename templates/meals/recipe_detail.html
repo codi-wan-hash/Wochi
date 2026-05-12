@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <a href="{% url 'recipe_list' %}" class="text-muted text-decoration-none small">← Gerichte</a>
         <h1 class="h2 mb-0 mt-1">{{ recipe.title }}</h1>
@@ -10,7 +10,35 @@
 </div>
 
 {% if recipe.notes %}
-    <p class="text-muted mb-4">{{ recipe.notes }}</p>
+    <p class="text-muted mb-3">{{ recipe.notes }}</p>
+{% endif %}
+
+<!-- Rezept-Bild -->
+{% if recipe.image %}
+<div class="mb-4 position-relative" id="image-block">
+    <img src="{{ recipe.image }}" alt="{{ recipe.title }}" id="recipe-img"
+         style="width:100%;height:280px;object-fit:cover;border-radius:0.75rem;">
+    <div class="position-absolute top-0 end-0 p-2 d-flex gap-1" id="image-actions-overlay">
+        <button class="btn btn-sm px-2 py-1" id="btn-change-image"
+                style="background:rgba(0,0,0,0.45);color:#fff;font-size:.8rem;border:none;border-radius:6px;">
+            ✎ Bild ändern
+        </button>
+    </div>
+    <div id="change-image-bar" class="mt-2 d-flex gap-2 align-items-center" style="display:none!important;">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-regenerate">✨ Neu generieren</button>
+        <label class="btn btn-outline-secondary btn-sm mb-0" for="replace-file-input">📷 Ersetzen</label>
+        <input type="file" id="replace-file-input" accept="image/*" class="d-none">
+        <button class="btn btn-link btn-sm text-muted p-0" id="btn-cancel-change">Abbrechen</button>
+    </div>
+</div>
+{% else %}
+<div class="mb-4 d-flex align-items-center justify-content-center gap-3" id="image-placeholder"
+     style="height:160px;background:var(--color-accent);border-radius:0.75rem;border:2px dashed var(--color-border);">
+    <button class="btn btn-dark btn-sm" id="btn-generate-image">✨ Bild generieren</button>
+    <span class="text-muted small">oder</span>
+    <label class="btn btn-outline-secondary btn-sm mb-0" for="upload-file-input">📷 Hochladen</label>
+    <input type="file" id="upload-file-input" accept="image/*" class="d-none">
+</div>
 {% endif %}
 
 <div class="row g-4">
@@ -156,10 +184,114 @@ const saveInstructionsUrl = "{% url 'recipe_update' recipe.pk %}";
 const aiSuggestUrl = "{% url 'recipe_ai_suggest' recipe.pk %}";
 const applyUrl = "{% url 'recipe_apply_suggestion' recipe.pk %}";
 const allToShoppingUrl = "{% url 'recipe_all_to_shopping' recipe.pk %}";
+const generateImageUrl = "{% url 'recipe_generate_image' recipe.pk %}";
+const uploadImageUrl = "{% url 'recipe_upload_image' recipe.pk %}";
 let duplicateModal;
 
 document.addEventListener("DOMContentLoaded", () => {
     duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+
+    // ── Bild generieren (kein Bild vorhanden) ──
+    const btnGenerate = document.getElementById("btn-generate-image");
+    if (btnGenerate) {
+        btnGenerate.addEventListener("click", function () {
+            this.disabled = true;
+            this.textContent = "Wird generiert…";
+            fetch(generateImageUrl, {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.image_url) location.reload();
+                else {
+                    this.disabled = false;
+                    this.textContent = "✨ Bild generieren";
+                    alert("Fehler: " + (data.error || "Unbekannter Fehler"));
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                this.textContent = "✨ Bild generieren";
+            });
+        });
+    }
+
+    // ── Bild hochladen (kein Bild vorhanden) ──
+    const uploadInput = document.getElementById("upload-file-input");
+    if (uploadInput) {
+        uploadInput.addEventListener("change", function () {
+            if (!this.files.length) return;
+            const label = this.previousElementSibling;
+            label.textContent = "Wird hochgeladen…";
+            const fd = new FormData();
+            fd.append("image", this.files[0]);
+            fetch(uploadImageUrl, {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+                body: fd,
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.image_url) location.reload();
+                else alert("Fehler: " + (data.error || "Unbekannter Fehler"));
+            });
+        });
+    }
+
+    // ── "Bild ändern"-Overlay (Bild vorhanden) ──
+    const btnChangeImage = document.getElementById("btn-change-image");
+    const changeBar = document.getElementById("change-image-bar");
+    if (btnChangeImage && changeBar) {
+        btnChangeImage.addEventListener("click", () => {
+            changeBar.style.setProperty("display", "flex", "important");
+            btnChangeImage.style.display = "none";
+        });
+        document.getElementById("btn-cancel-change").addEventListener("click", () => {
+            changeBar.style.setProperty("display", "none", "important");
+            btnChangeImage.style.display = "";
+        });
+
+        document.getElementById("btn-regenerate").addEventListener("click", function () {
+            this.disabled = true;
+            this.textContent = "Wird generiert…";
+            fetch(generateImageUrl, {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.image_url) location.reload();
+                else {
+                    this.disabled = false;
+                    this.textContent = "✨ Neu generieren";
+                    alert("Fehler: " + (data.error || "Unbekannter Fehler"));
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                this.textContent = "✨ Neu generieren";
+            });
+        });
+
+        document.getElementById("replace-file-input").addEventListener("change", function () {
+            if (!this.files.length) return;
+            const label = this.previousElementSibling;
+            label.textContent = "Wird hochgeladen…";
+            const fd = new FormData();
+            fd.append("image", this.files[0]);
+            fetch(uploadImageUrl, {
+                method: "POST",
+                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+                body: fd,
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.image_url) location.reload();
+                else alert("Fehler: " + (data.error || "Unbekannter Fehler"));
+            });
+        });
+    }
 
     document.getElementById("btn-all-to-shopping").addEventListener("click", function () {
         const btn = this;
