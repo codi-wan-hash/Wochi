@@ -36,3 +36,39 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile({self.user.username})"
+
+
+class WorkEntry(models.Model):
+    ENTRY_TYPE_CHOICES = [
+        ("work", "Arbeit"),
+        ("urlaub", "Urlaub"),
+        ("krankheit", "Krankheit"),
+        ("homeoffice", "Homeoffice"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="work_entries",
+    )
+    date = models.DateField()
+    entry_type = models.CharField(max_length=12, choices=ENTRY_TYPE_CHOICES, default="work")
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    break_minutes = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = ("user", "date")
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"{self.user.username} – {self.date}"
+
+    @property
+    def worked_hours(self):
+        if self.entry_type != "work" or not self.start_time or not self.end_time:
+            return None
+        start = datetime.combine(date.today(), self.start_time)
+        end = datetime.combine(date.today(), self.end_time)
+        total_minutes = (end - start).total_seconds() / 60 - self.break_minutes
+        return round(total_minutes / 60, 2)
