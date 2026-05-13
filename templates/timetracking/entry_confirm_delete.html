@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:500px">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Eintrag löschen</h5>
+            <p>Soll der Eintrag vom <strong>{{ entry.date|date:"d.m.Y" }}</strong> ({{ entry.get_entry_type_display }}) wirklich gelöscht werden?</p>
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-danger">Löschen</button>
+                    <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

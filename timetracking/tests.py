@@ -153,3 +153,65 @@ class SettingsViewTest(TestCase):
         self.client.logout()
         response = self.client.get("/timetracking/einstellungen/")
         self.assertRedirects(response, "/accounts/login/?next=/timetracking/einstellungen/")
+
+
+class FeatureGuardTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="guarduser", password="pw123456")
+        self.client.login(username="guarduser", password="pw123456")
+
+    def test_dashboard_redirects_when_disabled(self):
+        response = self.client.get("/timetracking/")
+        self.assertRedirects(response, "/timetracking/einstellungen/")
+
+    def test_entry_create_redirects_when_disabled(self):
+        response = self.client.get("/timetracking/eintrag/neu/")
+        self.assertRedirects(response, "/timetracking/einstellungen/")
+
+
+class WorkEntryCRUDTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="cruduser", password="pw123456")
+        self.client.login(username="cruduser", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.daily_target_hours = Decimal("8.00")
+        profile.work_start_date = date(2026, 1, 1)
+        profile.save()
+
+    def test_entry_create_get(self):
+        response = self.client.get("/timetracking/eintrag/neu/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_entry_create_post_work(self):
+        response = self.client.post("/timetracking/eintrag/neu/", {
+            "date": "2026-05-04",
+            "entry_type": "work",
+            "start_time": "08:00",
+            "end_time": "16:30",
+            "break_minutes": "30",
+        })
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+        from timetracking.models import WorkEntry
+        self.assertEqual(WorkEntry.objects.filter(user=self.user).count(), 1)
+
+    def test_entry_create_post_absence(self):
+        response = self.client.post("/timetracking/eintrag/neu/", {
+            "date": "2026-05-04",
+            "entry_type": "urlaub",
+            "break_minutes": "0",
+        })
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+        from timetracking.models import WorkEntry
+        entry = WorkEntry.objects.get(user=self.user)
+        self.assertIsNone(entry.start_time)
+
+    def test_entry_delete(self):
+        from timetracking.models import WorkEntry
+        entry = WorkEntry.objects.create(user=self.user, date=date(2026, 5, 4), entry_type="urlaub")
+        response = self.client.post(f"/timetracking/eintrag/{entry.pk}/loeschen/")
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+        self.assertEqual(WorkEntry.objects.filter(user=self.user).count(), 0)
