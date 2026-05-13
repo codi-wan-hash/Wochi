@@ -30,3 +30,4 @@ djangorestframework-simplejwt==5.5.0
 django-cors-headers==4.7.0
 cloudinary==1.41.0
 holidays
+weasyprint
