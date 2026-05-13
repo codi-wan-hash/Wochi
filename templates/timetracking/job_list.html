@@ -1,1 +1,43 @@
-{% extends "base.html" %}{% block content %}<h1>Jobs</h1>{% for job in jobs %}<div>{{ job.name }}</div>{% endfor %}{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:700px">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">Jobs verwalten</h1>
+        <a href="{% url 'timetracking:job_create' %}" class="btn btn-primary btn-sm">+ Neuer Job</a>
+    </div>
+    {% if jobs %}
+    <div class="list-group">
+        {% for job in jobs %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-bold">
+                    {{ job.name }}
+                    {% if job == profile.active_job %}<span class="badge bg-success ms-2">Aktiv</span>{% endif %}
+                </div>
+                <small class="text-muted">
+                    Wochensoll: {{ job.weekly_target_hours }}h &middot;
+                    Start: {{ job.work_start_date|date:"d.m.Y" }} &middot;
+                    {{ job.entry_count }} Eintrag{% if job.entry_count != 1 %}e{% endif %}
+                </small>
+            </div>
+            <div class="d-flex gap-1">
+                {% if job != profile.active_job %}
+                <form method="post" action="{% url 'timetracking:job_activate' job.pk %}" style="display:inline">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-success">Aktivieren</button>
+                </form>
+                {% endif %}
+                <a href="{% url 'timetracking:job_edit' job.pk %}" class="btn btn-sm btn-outline-secondary">✎</a>
+                <a href="{% url 'timetracking:job_delete' job.pk %}" class="btn btn-sm btn-outline-danger">✕</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">Noch keine Jobs vorhanden.</p>
+    {% endif %}
+    <div class="mt-3">
+        <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
+    </div>
+</div>
+{% endblock %}

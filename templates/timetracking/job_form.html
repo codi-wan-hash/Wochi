@@ -1,1 +1,33 @@
-{% extends "base.html" %}{% block content %}<h1>{{ title }}</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Speichern</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:500px">
+    <h1 class="h3 mb-4">{{ title }}</h1>
+    <div class="card">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+                    {{ form.name }}
+                    {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.weekly_target_hours.id_for_label }}" class="form-label">{{ form.weekly_target_hours.label }}</label>
+                    {{ form.weekly_target_hours }}
+                    {% if form.weekly_target_hours.errors %}<div class="invalid-feedback d-block">{{ form.weekly_target_hours.errors }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.work_start_date.id_for_label }}" class="form-label">{{ form.work_start_date.label }}</label>
+                    {{ form.work_start_date }}
+                    <div class="form-text">Ab diesem Datum wird der Saldo für diesen Job berechnet.</div>
+                    {% if form.work_start_date.errors %}<div class="invalid-feedback d-block">{{ form.work_start_date.errors }}</div>{% endif %}
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                    <a href="{% url 'timetracking:job_list' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

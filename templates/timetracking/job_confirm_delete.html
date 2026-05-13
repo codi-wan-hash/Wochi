@@ -1,1 +1,23 @@
-{% extends "base.html" %}{% block content %}<h1>Löschen</h1><form method="post">{% csrf_token %}<button type="submit">Löschen</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:500px">
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Job löschen</h5>
+            <p>Soll der Job <strong>{{ job.name }}</strong> wirklich gelöscht werden?</p>
+            {% if job.entries.exists %}
+            <div class="alert alert-danger">Dieser Job hat noch Einträge und kann nicht gelöscht werden.</div>
+            <a href="{% url 'timetracking:job_list' %}" class="btn btn-secondary">Zurück</a>
+            {% else %}
+            <form method="post">
+                {% csrf_token %}
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-danger">Löschen</button>
+                    <a href="{% url 'timetracking:job_list' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
