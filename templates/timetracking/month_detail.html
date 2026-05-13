@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <a href="{% url 'timetracking:dashboard' %}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
+            <h1 class="h3 mb-0">{{ month_name }}</h1>
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a href="{% url 'timetracking:month_detail' prev_month.year prev_month.month %}" class="btn btn-outline-secondary">← {{ prev_month|date:"F Y" }}</a>
+            <a href="{% url 'timetracking:month_detail' next_month.year next_month.month %}" class="btn btn-outline-secondary">{{ next_month|date:"F Y" }} →</a>
+        </div>
+    </div>
+
+    <!-- Monatssummary -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Arbeitstage</div>
+                    <div class="h4 mb-0">{{ soll_days_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Sollstunden</div>
+                    <div class="h4 mb-0">{{ month_soll|floatformat:2 }}h</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Iststunden</div>
+                    <div class="h4 mb-0">{{ month_ist|floatformat:2 }}h</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center {% if month_saldo >= 0 %}border-success{% else %}border-danger{% endif %}">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Monatssaldo</div>
+                    <div class="h4 mb-0 {% if month_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% if month_saldo >= 0 %}+{% endif %}{{ month_saldo|floatformat:2 }}h
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tagesliste -->
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Datum</th>
+                        <th>Typ</th>
+                        <th class="text-end">Ist</th>
+                        <th class="text-end">Soll</th>
+                        <th class="text-end">Diff</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for d in days_data %}
+                <tr class="{% if d.is_weekend %}text-muted{% elif d.holiday_name %}table-info{% endif %}">
+                    <td>
+                        {{ d.day|date:"D, d.m.Y" }}
+                        {% if d.holiday_name %}<small class="ms-1 text-muted">({{ d.holiday_name }})</small>{% endif %}
+                    </td>
+                    <td>
+                        {% if d.entry %}{{ d.entry.get_entry_type_display }}
+                        {% elif d.is_weekend %}Wochenende
+                        {% elif d.holiday_name %}Feiertag
+                        {% else %}–{% endif %}
+                    </td>
+                    <td class="text-end">{% if not d.is_weekend %}{{ d.ist|floatformat:2 }}h{% endif %}</td>
+                    <td class="text-end">{% if not d.is_weekend %}{{ d.soll|floatformat:2 }}h{% endif %}</td>
+                    <td class="text-end {% if not d.is_weekend %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                        {% if not d.is_weekend %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
+                    </td>
+                    <td>
+                        {% if not d.is_weekend and not d.holiday_name %}
+                            {% if d.entry %}
+                            <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-1">✏</a>
+                            {% else %}
+                            <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-1">+</a>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

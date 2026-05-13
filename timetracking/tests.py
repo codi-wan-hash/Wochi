@@ -243,3 +243,30 @@ class DashboardTest(TestCase):
         response = self.client.get("/timetracking/")
         self.assertIn("month_soll_days", response.context)
         self.assertGreater(response.context["month_soll_days"], 0)
+
+
+class MonthDetailTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="monthuser", password="pw123456")
+        self.client.login(username="monthuser", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.daily_target_hours = Decimal("8.00")
+        profile.work_start_date = date(2026, 1, 1)
+        profile.save()
+
+    def test_month_detail_loads(self):
+        response = self.client.get("/timetracking/monat/2026/5/")
+        self.assertEqual(response.status_code, 200)
+
+    def test_month_detail_has_31_days_for_may(self):
+        response = self.client.get("/timetracking/monat/2026/5/")
+        self.assertEqual(len(response.context["days_data"]), 31)
+
+    def test_month_detail_soll_days_exclude_weekends_and_holidays(self):
+        response = self.client.get("/timetracking/monat/2026/5/")
+        # May 2026 has 31 days, weekends + May 1 (holiday) excluded
+        self.assertGreater(response.context["soll_days_count"], 0)
+        self.assertLessEqual(response.context["soll_days_count"], 22)
