@@ -53,3 +53,75 @@ class WorkEntryTest(TestCase):
         WorkEntry.objects.create(user=self.user, date=date(2026, 5, 4), entry_type="urlaub")
         with self.assertRaises(IntegrityError):
             WorkEntry.objects.create(user=self.user, date=date(2026, 5, 4), entry_type="krankheit")
+
+
+class HolidayUtilsTest(TestCase):
+    def test_may_first_is_holiday_in_bavaria(self):
+        from timetracking.utils import is_holiday
+        self.assertTrue(is_holiday(date(2026, 5, 1), "BY"))
+
+    def test_regular_monday_is_not_holiday(self):
+        from timetracking.utils import is_holiday
+        self.assertFalse(is_holiday(date(2026, 5, 4), "BY"))
+
+    def test_saturday_is_not_soll_day(self):
+        from timetracking.utils import is_soll_day
+        self.assertFalse(is_soll_day(date(2026, 5, 2), "BY"))
+
+    def test_monday_is_soll_day(self):
+        from timetracking.utils import is_soll_day
+        self.assertTrue(is_soll_day(date(2026, 5, 4), "BY"))
+
+    def test_holiday_is_not_soll_day(self):
+        from timetracking.utils import is_soll_day
+        self.assertFalse(is_soll_day(date(2026, 5, 1), "BY"))
+
+    def test_get_soll_days_in_range(self):
+        from timetracking.utils import get_soll_days_in_range
+        # May 4-8 2026 (Mon-Fri), no holidays in Bayern that week
+        days = get_soll_days_in_range(date(2026, 5, 4), date(2026, 5, 8), "BY")
+        self.assertEqual(len(days), 5)
+
+    def test_saldo_positive(self):
+        from timetracking.utils import calculate_total_saldo
+        from timetracking.models import WorkEntry
+        from datetime import time
+
+        user = User.objects.create_user(username="saldotest", password="pw123456")
+        profile = user.userprofile
+        profile.bundesland = "BY"
+        profile.daily_target_hours = Decimal("8.00")
+        profile.work_start_date = date(2026, 5, 4)
+        profile.save()
+
+        WorkEntry.objects.create(
+            user=user,
+            date=date(2026, 5, 4),
+            entry_type="work",
+            start_time=time(8, 0),
+            end_time=time(17, 0),
+            break_minutes=0,
+        )
+        # as_of May 5: one soll day (May 4), worked 9h → saldo = +1h
+        saldo = calculate_total_saldo(user, as_of=date(2026, 5, 5))
+        self.assertEqual(saldo, Decimal("1.00"))
+
+    def test_saldo_absence_counts_as_soll(self):
+        from timetracking.utils import calculate_total_saldo
+        from timetracking.models import WorkEntry
+
+        user = User.objects.create_user(username="absencetest", password="pw123456")
+        profile = user.userprofile
+        profile.bundesland = "BY"
+        profile.daily_target_hours = Decimal("8.00")
+        profile.work_start_date = date(2026, 5, 4)
+        profile.save()
+
+        WorkEntry.objects.create(
+            user=user,
+            date=date(2026, 5, 4),
+            entry_type="urlaub",
+        )
+        # Urlaub counts as soll fulfilled → saldo = 0
+        saldo = calculate_total_saldo(user, as_of=date(2026, 5, 5))
+        self.assertEqual(saldo, Decimal("0.00"))
