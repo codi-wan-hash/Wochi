@@ -12,24 +12,51 @@ class UserProfileSignalTest(TestCase):
         user = User.objects.create_user(username="testuser", password="pw123456")
         self.assertTrue(hasattr(user, "userprofile"))
         self.assertFalse(user.userprofile.timetracking_enabled)
-        self.assertEqual(user.userprofile.daily_target_hours, Decimal("8.00"))
 
     def test_profile_not_duplicated_on_save(self):
         user = User.objects.create_user(username="testuser2", password="pw123456")
-        user.save()  # second save should not create a second profile
+        user.save()
         from timetracking.models import UserProfile
         self.assertEqual(UserProfile.objects.filter(user=user).count(), 1)
+
+    def test_job_creation(self):
+        from timetracking.models import Job
+        user = User.objects.create_user(username="jobtest", password="pw123456")
+        job = Job.objects.create(
+            user=user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        self.assertEqual(str(job), "Hauptjob (jobtest)")
+        self.assertEqual(job.weekly_target_hours, Decimal("40.00"))
+
+    def test_job_unique_name_per_user(self):
+        from timetracking.models import Job
+        from django.db import IntegrityError
+        user = User.objects.create_user(username="duptest", password="pw123456")
+        Job.objects.create(user=user, name="Hauptjob", weekly_target_hours=Decimal("40.00"), work_start_date=date(2026, 1, 1))
+        with self.assertRaises(IntegrityError):
+            Job.objects.create(user=user, name="Hauptjob", weekly_target_hours=Decimal("20.00"), work_start_date=date(2026, 1, 1))
 
 
 class WorkEntryTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="worker", password="pw123456")
+        from timetracking.models import Job
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
 
     def test_worked_hours_calculation(self):
         from timetracking.models import WorkEntry
         from datetime import time
         entry = WorkEntry.objects.create(
             user=self.user,
+            job=self.job,
             date=date(2026, 5, 4),
             entry_type="work",
             start_time=time(8, 0),
@@ -42,6 +69,7 @@ class WorkEntryTest(TestCase):
         from timetracking.models import WorkEntry
         entry = WorkEntry.objects.create(
             user=self.user,
+            job=self.job,
             date=date(2026, 5, 4),
             entry_type="urlaub",
         )
@@ -50,9 +78,9 @@ class WorkEntryTest(TestCase):
     def test_unique_entry_per_day(self):
         from timetracking.models import WorkEntry
         from django.db import IntegrityError
-        WorkEntry.objects.create(user=self.user, date=date(2026, 5, 4), entry_type="urlaub")
+        WorkEntry.objects.create(user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="urlaub")
         with self.assertRaises(IntegrityError):
-            WorkEntry.objects.create(user=self.user, date=date(2026, 5, 4), entry_type="krankheit")
+            WorkEntry.objects.create(user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="krankheit")
 
 
 class HolidayUtilsTest(TestCase):

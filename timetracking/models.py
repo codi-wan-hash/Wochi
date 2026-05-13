@@ -23,6 +23,24 @@ BUNDESLAND_CHOICES = [
 ]
 
 
+class Job(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="jobs",
+    )
+    name = models.CharField(max_length=100)
+    weekly_target_hours = models.DecimalField(max_digits=5, decimal_places=2)
+    work_start_date = models.DateField()
+
+    class Meta:
+        unique_together = ("user", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.user.username})"
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -31,6 +49,14 @@ class UserProfile(models.Model):
     )
     timetracking_enabled = models.BooleanField(default=False)
     bundesland = models.CharField(max_length=2, choices=BUNDESLAND_CHOICES, default="BY")
+    active_job = models.ForeignKey(
+        "Job",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="active_for_profiles",
+    )
+    # Legacy fields kept temporarily for data migration — removed in Task 3
     daily_target_hours = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("8.00"))
     work_start_date = models.DateField(null=True, blank=True)
 
@@ -50,6 +76,13 @@ class WorkEntry(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="work_entries",
+    )
+    job = models.ForeignKey(
+        "Job",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="entries",
     )
     date = models.DateField()
     entry_type = models.CharField(max_length=12, choices=ENTRY_TYPE_CHOICES, default="work")
