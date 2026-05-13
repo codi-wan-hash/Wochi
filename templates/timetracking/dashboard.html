@@ -9,10 +9,14 @@
     <!-- Gesamtsaldo -->
     <div class="card mb-4 text-center">
         <div class="card-body py-4">
+            {% if profile.work_start_date %}
             <div class="text-muted mb-1">Gesamtsaldo seit {{ profile.work_start_date|date:"d.m.Y" }}</div>
             <div class="display-5 fw-bold {% if total_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
                 {% if total_saldo >= 0 %}+{% endif %}{{ total_saldo|floatformat:2 }}h
             </div>
+            {% else %}
+            <div class="text-muted">Kein Startdatum gesetzt — <a href="{% url 'timetracking:settings_view' %}">Einstellungen öffnen</a></div>
+            {% endif %}
         </div>
     </div>
 
@@ -54,6 +58,7 @@
                                 {% if not d.is_weekend and not d.holiday_name %}
                                     {% if d.entry %}
                                     <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-1">&#9998;</a>
+                                    <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-1">&#10005;</a>
                                     {% else %}
                                     <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-1">+</a>
                                     {% endif %}
