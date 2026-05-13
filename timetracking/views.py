@@ -26,7 +26,9 @@ def settings_view(request):
             form.save()
             messages.success(request, "Einstellungen gespeichert.")
             if profile.timetracking_enabled:
-                return redirect("timetracking:dashboard")
+                if profile.active_job:
+                    return redirect("timetracking:dashboard")
+                return redirect("timetracking:job_list")
             return redirect("timetracking:settings_view")
     else:
         form = UserProfileForm(instance=profile)

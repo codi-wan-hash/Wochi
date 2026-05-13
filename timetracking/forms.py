@@ -21,18 +21,14 @@ class JobForm(forms.ModelForm):
 class UserProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        fields = ["timetracking_enabled", "bundesland", "daily_target_hours", "work_start_date"]
+        fields = ["timetracking_enabled", "bundesland"]
         widgets = {
             "bundesland": forms.Select(attrs={"class": "form-select"}),
-            "daily_target_hours": forms.NumberInput(attrs={"class": "form-control", "step": "0.5"}),
-            "work_start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "timetracking_enabled": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
         labels = {
             "timetracking_enabled": "Arbeitszeiterfassung aktivieren",
-            "bundesland": "Bundesland (für Feiertage)",
-            "daily_target_hours": "Tagessoll (Stunden)",
-            "work_start_date": "Startdatum für Saldo",
+            "bundesland": "Bundesland (für Feiertage, gilt für alle Jobs)",
         }
 
 
