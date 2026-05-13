@@ -84,6 +84,18 @@ class WorkEntryTest(TestCase):
 
 
 class HolidayUtilsTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="utilsuser", password="pw123456")
+        self.user.userprofile.bundesland = "BY"
+        self.user.userprofile.save()
+        from timetracking.models import Job
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 5, 4),
+        )
+
     def test_may_first_is_holiday_in_bavaria(self):
         from timetracking.utils import is_holiday
         self.assertTrue(is_holiday(date(2026, 5, 1), "BY"))
@@ -106,53 +118,54 @@ class HolidayUtilsTest(TestCase):
 
     def test_get_soll_days_in_range(self):
         from timetracking.utils import get_soll_days_in_range
-        # May 4-8 2026 (Mon-Fri), no holidays in Bayern that week
         days = get_soll_days_in_range(date(2026, 5, 4), date(2026, 5, 8), "BY")
         self.assertEqual(len(days), 5)
 
-    def test_saldo_positive(self):
+    def test_weekly_saldo_positive(self):
         from timetracking.utils import calculate_total_saldo
         from timetracking.models import WorkEntry
         from datetime import time
+        # Week of May 4-8: 40h soll, worked 9h/day * 5 = 45h
+        for day_offset in range(5):
+            d = date(2026, 5, 4 + day_offset)
+            WorkEntry.objects.create(
+                user=self.user,
+                job=self.job,
+                date=d,
+                entry_type="work",
+                start_time=time(8, 0),
+                end_time=time(17, 0),
+                break_minutes=0,
+            )
+        # as_of = May 11 (next week Monday): week of May 4 is complete
+        saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 11))
+        self.assertEqual(saldo, Decimal("5.00"))  # 45h - 40h = +5h
 
-        user = User.objects.create_user(username="saldotest", password="pw123456")
-        profile = user.userprofile
-        profile.bundesland = "BY"
-        profile.daily_target_hours = Decimal("8.00")
-        profile.work_start_date = date(2026, 5, 4)
-        profile.save()
-
-        WorkEntry.objects.create(
-            user=user,
-            date=date(2026, 5, 4),
-            entry_type="work",
-            start_time=time(8, 0),
-            end_time=time(17, 0),
-            break_minutes=0,
-        )
-        # as_of May 5: one soll day (May 4), worked 9h → saldo = +1h
-        saldo = calculate_total_saldo(user, as_of=date(2026, 5, 5))
-        self.assertEqual(saldo, Decimal("1.00"))
-
-    def test_saldo_absence_counts_as_soll(self):
+    def test_weekly_saldo_absence_counts_as_daily_equiv(self):
         from timetracking.utils import calculate_total_saldo
         from timetracking.models import WorkEntry
-
-        user = User.objects.create_user(username="absencetest", password="pw123456")
-        profile = user.userprofile
-        profile.bundesland = "BY"
-        profile.daily_target_hours = Decimal("8.00")
-        profile.work_start_date = date(2026, 5, 4)
-        profile.save()
-
-        WorkEntry.objects.create(
-            user=user,
-            date=date(2026, 5, 4),
-            entry_type="urlaub",
-        )
-        # Urlaub counts as soll fulfilled → saldo = 0
-        saldo = calculate_total_saldo(user, as_of=date(2026, 5, 5))
+        for day_offset in range(5):
+            d = date(2026, 5, 4 + day_offset)
+            WorkEntry.objects.create(
+                user=self.user,
+                job=self.job,
+                date=d,
+                entry_type="urlaub",
+            )
+        saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 11))
         self.assertEqual(saldo, Decimal("0.00"))
+
+    def test_current_week_no_entries_no_deficit(self):
+        from timetracking.utils import calculate_weekly_saldo
+        from timetracking.utils import get_week_start
+        today = date.today()
+        self.job.work_start_date = get_week_start(today)
+        self.job.save()
+        weeks = calculate_weekly_saldo(self.job, "BY")
+        if weeks:
+            current = next((w for w in weeks if w["is_current"]), None)
+            if current:
+                self.assertEqual(current["saldo"], Decimal("0.00"))
 
 
 class SettingsViewTest(TestCase):

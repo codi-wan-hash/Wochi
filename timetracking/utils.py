@@ -27,49 +27,84 @@ def get_soll_days_in_range(start: date, end: date, bundesland: str) -> list:
     return days
 
 
+def get_week_start(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
 def get_or_create_profile(user):
     from timetracking.models import UserProfile
     profile, _ = UserProfile.objects.get_or_create(user=user)
     return profile
 
 
-def calculate_total_saldo(user, as_of=None):
-    from timetracking.models import WorkEntry
-    profile = get_or_create_profile(user)
-
-    if not profile.work_start_date:
-        return Decimal("0")
+def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
+    """
+    Returns list of weekly saldo dicts from job.work_start_date through as_of.
+    Each dict: week_start, week_end, iso_week, year, soll, ist, saldo, is_current.
+    """
+    if not job.work_start_date:
+        return []
 
     if as_of is None:
         as_of = date.today()
 
-    if as_of < profile.work_start_date:
-        return Decimal("0")
+    if as_of < job.work_start_date:
+        return []
 
-    # Only past days (before as_of) automatically create a soll deficit.
-    # For as_of itself, soll is only added if there's already an entry.
-    past_end = as_of - timedelta(days=1)
-    if past_end >= profile.work_start_date:
-        past_soll_days = get_soll_days_in_range(profile.work_start_date, past_end, profile.bundesland)
-    else:
-        past_soll_days = []
+    from timetracking.models import WorkEntry
 
-    total_soll = Decimal(str(len(past_soll_days))) * profile.daily_target_hours
-    total_ist = Decimal("0")
+    current_week_start = get_week_start(date.today())
+    weeks = []
+    week_start = get_week_start(job.work_start_date)
 
-    entries = WorkEntry.objects.filter(
-        user=user,
-        date__gte=profile.work_start_date,
-        date__lte=as_of,
-    )
-    for entry in entries:
-        if entry.entry_type == "work":
-            if entry.worked_hours is not None:
-                total_ist += Decimal(str(entry.worked_hours))
+    while week_start <= get_week_start(as_of):
+        week_end = week_start + timedelta(days=6)
+        effective_start = max(week_start, job.work_start_date)
+        effective_end = min(week_end, as_of)
+
+        # Soll proportional: effective soll days / full-week soll days
+        full_week_fri = week_start + timedelta(days=4)
+        full_soll = len(get_soll_days_in_range(week_start, full_week_fri, bundesland))
+        eff_soll = len(get_soll_days_in_range(effective_start, effective_end, bundesland))
+
+        if full_soll > 0:
+            week_soll = job.weekly_target_hours * Decimal(eff_soll) / Decimal(full_soll)
         else:
-            total_ist += profile.daily_target_hours
-        # For the current day (as_of): add soll only when an entry exists
-        if entry.date == as_of and is_soll_day(as_of, profile.bundesland):
-            total_soll += profile.daily_target_hours
+            week_soll = Decimal("0")
 
-    return total_ist - total_soll
+        entries = WorkEntry.objects.filter(job=job, date__range=[effective_start, effective_end])
+        daily_equiv = job.weekly_target_hours / Decimal("5")
+
+        week_ist = Decimal("0")
+        for entry in entries:
+            if entry.entry_type == "work":
+                if entry.worked_hours is not None:
+                    week_ist += Decimal(str(entry.worked_hours))
+            else:
+                week_ist += daily_equiv
+
+        is_current = week_start == current_week_start
+
+        # Current week without entries: no deficit yet
+        if is_current and not entries.exists():
+            week_soll = Decimal("0")
+
+        weeks.append({
+            "week_start": week_start,
+            "week_end": week_end,
+            "iso_week": week_start.isocalendar()[1],
+            "year": week_start.year,
+            "soll": week_soll,
+            "ist": week_ist,
+            "saldo": week_ist - week_soll,
+            "is_current": is_current,
+        })
+
+        week_start += timedelta(weeks=1)
+
+    return weeks
+
+
+def calculate_total_saldo(job, bundesland: str, as_of: date = None) -> Decimal:
+    weeks = calculate_weekly_saldo(job, bundesland, as_of)
+    return sum((w["saldo"] for w in weeks), Decimal("0"))
