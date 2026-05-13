@@ -311,3 +311,66 @@ class MonthDetailTest(TestCase):
         # May 2026 has 31 days, weekends + May 1 (holiday) excluded
         self.assertGreater(response.context["soll_days_count"], 0)
         self.assertLessEqual(response.context["soll_days_count"], 22)
+
+
+class JobCRUDTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="jobcrud", password="pw123456")
+        self.client.login(username="jobcrud", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        from timetracking.models import Job
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        profile.active_job = self.job
+        profile.save()
+
+    def test_job_list_loads(self):
+        response = self.client.get("/timetracking/jobs/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Hauptjob")
+
+    def test_job_create(self):
+        response = self.client.post("/timetracking/jobs/neu/", {
+            "name": "Nebenjob",
+            "weekly_target_hours": "20.00",
+            "work_start_date": "2026-03-01",
+        })
+        self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
+        from timetracking.models import Job
+        self.assertEqual(Job.objects.filter(user=self.user).count(), 2)
+
+    def test_job_activate(self):
+        from timetracking.models import Job
+        job2 = Job.objects.create(
+            user=self.user, name="Nebenjob",
+            weekly_target_hours=Decimal("20.00"), work_start_date=date(2026, 3, 1)
+        )
+        response = self.client.post(f"/timetracking/jobs/{job2.pk}/aktivieren/")
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+        self.user.userprofile.refresh_from_db()
+        self.assertEqual(self.user.userprofile.active_job, job2)
+
+    def test_job_delete_blocked_with_entries(self):
+        from timetracking.models import WorkEntry
+        WorkEntry.objects.create(user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="urlaub")
+        response = self.client.post(f"/timetracking/jobs/{self.job.pk}/loeschen/")
+        from timetracking.models import Job
+        self.assertEqual(Job.objects.filter(user=self.user).count(), 1)
+
+    def test_job_delete_allowed_without_entries(self):
+        from timetracking.models import Job
+        job2 = Job.objects.create(
+            user=self.user, name="Leerjob",
+            weekly_target_hours=Decimal("10.00"), work_start_date=date(2026, 5, 1)
+        )
+        response = self.client.post(f"/timetracking/jobs/{job2.pk}/loeschen/")
+        self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
+        self.assertEqual(Job.objects.filter(user=self.user, name="Leerjob").count(), 0)

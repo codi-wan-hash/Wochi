@@ -1,5 +1,21 @@
 from django import forms
-from .models import UserProfile, WorkEntry
+from .models import Job, UserProfile, WorkEntry
+
+
+class JobForm(forms.ModelForm):
+    class Meta:
+        model = Job
+        fields = ["name", "weekly_target_hours", "work_start_date"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "weekly_target_hours": forms.NumberInput(attrs={"class": "form-control", "step": "0.5"}),
+            "work_start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
+        }
+        labels = {
+            "name": "Bezeichnung",
+            "weekly_target_hours": "Wochensoll (Stunden)",
+            "work_start_date": "Startdatum für Saldo",
+        }
 
 
 class UserProfileForm(forms.ModelForm):

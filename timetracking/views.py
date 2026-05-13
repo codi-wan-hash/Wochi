@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import UserProfileForm, WorkEntryForm
@@ -238,3 +239,96 @@ def month_detail(request, year, month):
         "prev_month": prev_month_first,
         "next_month": next_month_first,
     })
+
+
+@login_required
+def job_list(request):
+    profile = get_or_create_profile(request.user)
+    if not profile.timetracking_enabled:
+        return redirect("timetracking:settings_view")
+    jobs = request.user.jobs.annotate(entry_count=Count("entries")).order_by("name")
+    return render(request, "timetracking/job_list.html", {
+        "jobs": jobs,
+        "profile": profile,
+    })
+
+
+@login_required
+def job_create(request):
+    profile = get_or_create_profile(request.user)
+    if not profile.timetracking_enabled:
+        return redirect("timetracking:settings_view")
+    from .forms import JobForm
+    if request.method == "POST":
+        form = JobForm(request.POST)
+        if form.is_valid():
+            job = form.save(commit=False)
+            job.user = request.user
+            job.save()
+            messages.success(request, f'Job „{job.name}“ wurde erstellt.')
+            return redirect("timetracking:job_list")
+    else:
+        form = JobForm()
+    return render(request, "timetracking/job_form.html", {"form": form, "title": "Neuer Job"})
+
+
+@login_required
+def job_edit(request, pk):
+    profile = get_or_create_profile(request.user)
+    job = get_object_or_404(request.user.jobs, pk=pk)
+    from .forms import JobForm
+    if request.method == "POST":
+        form = JobForm(request.POST, instance=job)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Job aktualisiert.")
+            return redirect("timetracking:job_list")
+    else:
+        form = JobForm(instance=job)
+    return render(request, "timetracking/job_form.html", {"form": form, "title": "Job bearbeiten"})
+
+
+@login_required
+def job_delete(request, pk):
+    profile = get_or_create_profile(request.user)
+    job = get_object_or_404(request.user.jobs, pk=pk)
+    if request.method == "POST":
+        if job.entries.exists():
+            messages.error(request, f'Job „{job.name}" kann nicht gelöscht werden, da noch Einträge vorhanden sind.')
+            return redirect("timetracking:job_list")
+        was_active = profile.active_job_id == job.pk
+        job.delete()
+        if was_active:
+            profile.active_job = request.user.jobs.first()
+            profile.save()
+        messages.success(request, "Job gelöscht.")
+        return redirect("timetracking:job_list")
+    return render(request, "timetracking/job_confirm_delete.html", {"job": job})
+
+
+@login_required
+def job_activate(request, pk):
+    if request.method == "POST":
+        job = get_object_or_404(request.user.jobs, pk=pk)
+        profile = get_or_create_profile(request.user)
+        profile.active_job = job
+        profile.save()
+    return redirect("timetracking:dashboard")
+
+
+@login_required
+def report_view(request, year, month):
+    profile = get_or_create_profile(request.user)
+    if not profile.timetracking_enabled or not profile.active_job:
+        return redirect("timetracking:settings_view")
+    return render(request, "timetracking/report.html", {"year": year, "month": month})
+
+
+@login_required
+def report_pdf(request, year, month):
+    return redirect("timetracking:report_view", year=year, month=month)
+
+
+@login_required
+def report_email(request, year, month):
+    return redirect("timetracking:report_view", year=year, month=month)

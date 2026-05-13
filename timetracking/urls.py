@@ -10,4 +10,12 @@ urlpatterns = [
     path("eintrag/<int:pk>/loeschen/", views.entry_delete, name="entry_delete"),
     path("einstellungen/", views.settings_view, name="settings_view"),
     path("monat/<int:year>/<int:month>/", views.month_detail, name="month_detail"),
+    path("jobs/", views.job_list, name="job_list"),
+    path("jobs/neu/", views.job_create, name="job_create"),
+    path("jobs/<int:pk>/bearbeiten/", views.job_edit, name="job_edit"),
+    path("jobs/<int:pk>/loeschen/", views.job_delete, name="job_delete"),
+    path("jobs/<int:pk>/aktivieren/", views.job_activate, name="job_activate"),
+    path("bericht/<int:year>/<int:month>/", views.report_view, name="report_view"),
+    path("bericht/<int:year>/<int:month>/pdf/", views.report_pdf, name="report_pdf"),
+    path("bericht/<int:year>/<int:month>/email/", views.report_email, name="report_email"),
 ]
