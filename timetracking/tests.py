@@ -215,3 +215,31 @@ class WorkEntryCRUDTest(TestCase):
         response = self.client.post(f"/timetracking/eintrag/{entry.pk}/loeschen/")
         self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
         self.assertEqual(WorkEntry.objects.filter(user=self.user).count(), 0)
+
+
+class DashboardTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="dashuser", password="pw123456")
+        self.client.login(username="dashuser", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.daily_target_hours = Decimal("8.00")
+        profile.work_start_date = date(2026, 1, 1)
+        profile.save()
+
+    def test_dashboard_loads(self):
+        response = self.client.get("/timetracking/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Gesamtsaldo")
+
+    def test_dashboard_shows_week_data(self):
+        response = self.client.get("/timetracking/")
+        self.assertIn("week_data", response.context)
+        self.assertEqual(len(response.context["week_data"]), 7)
+
+    def test_dashboard_shows_month_data(self):
+        response = self.client.get("/timetracking/")
+        self.assertIn("month_soll_days", response.context)
+        self.assertGreater(response.context["month_soll_days"], 0)
