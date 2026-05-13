@@ -25,7 +25,7 @@ class WorkEntryForm(forms.ModelForm):
         model = WorkEntry
         fields = ["date", "entry_type", "start_time", "end_time", "break_minutes"]
         widgets = {
-            "date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+            "date": forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
             "entry_type": forms.Select(attrs={"class": "form-select"}),
             "start_time": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "end_time": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),

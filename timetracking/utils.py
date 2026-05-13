@@ -43,24 +43,33 @@ def calculate_total_saldo(user, as_of=None):
     if as_of is None:
         as_of = date.today()
 
-    yesterday = as_of - timedelta(days=1)
-    if yesterday < profile.work_start_date:
+    if as_of < profile.work_start_date:
         return Decimal("0")
 
-    soll_days = get_soll_days_in_range(profile.work_start_date, yesterday, profile.bundesland)
-    total_soll = Decimal(str(len(soll_days))) * profile.daily_target_hours
+    # Only past days (before as_of) automatically create a soll deficit.
+    # For as_of itself, soll is only added if there's already an entry.
+    past_end = as_of - timedelta(days=1)
+    if past_end >= profile.work_start_date:
+        past_soll_days = get_soll_days_in_range(profile.work_start_date, past_end, profile.bundesland)
+    else:
+        past_soll_days = []
+
+    total_soll = Decimal(str(len(past_soll_days))) * profile.daily_target_hours
+    total_ist = Decimal("0")
 
     entries = WorkEntry.objects.filter(
         user=user,
         date__gte=profile.work_start_date,
-        date__lte=yesterday,
+        date__lte=as_of,
     )
-    total_ist = Decimal("0")
     for entry in entries:
         if entry.entry_type == "work":
             if entry.worked_hours is not None:
                 total_ist += Decimal(str(entry.worked_hours))
         else:
             total_ist += profile.daily_target_hours
+        # For the current day (as_of): add soll only when an entry exists
+        if entry.date == as_of and is_soll_day(as_of, profile.bundesland):
+            total_soll += profile.daily_target_hours
 
     return total_ist - total_soll

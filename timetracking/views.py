@@ -65,6 +65,7 @@ def dashboard(request):
         else:
             ist = Decimal("0")
 
+        pending = day == today and not entry and is_soll
         week_data.append({
             "day": day,
             "entry": entry,
@@ -72,7 +73,8 @@ def dashboard(request):
             "is_weekend": is_weekend,
             "soll": soll,
             "ist": ist,
-            "diff": ist - soll,
+            "diff": Decimal("0") if pending else ist - soll,
+            "pending": pending,
         })
 
     first_of_month = today.replace(day=1)
