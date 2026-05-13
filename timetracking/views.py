@@ -116,10 +116,10 @@ def dashboard(request):
 @login_required
 def entry_create(request):
     profile = get_or_create_profile(request.user)
-    if not profile.timetracking_enabled:
+    if not profile.timetracking_enabled or not profile.active_job:
         return redirect("timetracking:settings_view")
 
-    initial = {}
+    initial = {"job": profile.active_job}
     date_str = request.GET.get("date")
     if date_str:
         try:
@@ -128,7 +128,7 @@ def entry_create(request):
             pass
 
     if request.method == "POST":
-        form = WorkEntryForm(request.POST)
+        form = WorkEntryForm(request.POST, user=request.user)
         if form.is_valid():
             entry = form.save(commit=False)
             entry.user = request.user
@@ -136,7 +136,7 @@ def entry_create(request):
             messages.success(request, "Eintrag gespeichert.")
             return redirect("timetracking:dashboard")
     else:
-        form = WorkEntryForm(initial=initial)
+        form = WorkEntryForm(initial=initial, user=request.user)
 
     return render(request, "timetracking/entry_form.html", {"form": form, "title": "Neuer Eintrag"})
 
@@ -150,13 +150,13 @@ def entry_edit(request, pk):
     entry = get_object_or_404(WorkEntry, pk=pk, user=request.user)
 
     if request.method == "POST":
-        form = WorkEntryForm(request.POST, instance=entry)
+        form = WorkEntryForm(request.POST, instance=entry, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, "Eintrag aktualisiert.")
             return redirect("timetracking:dashboard")
     else:
-        form = WorkEntryForm(instance=entry)
+        form = WorkEntryForm(instance=entry, user=request.user)
 
     return render(request, "timetracking/entry_form.html", {"form": form, "title": "Eintrag bearbeiten"})
 

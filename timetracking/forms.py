@@ -39,8 +39,9 @@ class UserProfileForm(forms.ModelForm):
 class WorkEntryForm(forms.ModelForm):
     class Meta:
         model = WorkEntry
-        fields = ["date", "entry_type", "start_time", "end_time", "break_minutes"]
+        fields = ["job", "date", "entry_type", "start_time", "end_time", "break_minutes"]
         widgets = {
+            "job": forms.Select(attrs={"class": "form-select"}),
             "date": forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
             "entry_type": forms.Select(attrs={"class": "form-select"}),
             "start_time": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
@@ -48,6 +49,7 @@ class WorkEntryForm(forms.ModelForm):
             "break_minutes": forms.NumberInput(attrs={"class": "form-control", "min": "0"}),
         }
         labels = {
+            "job": "Job",
             "date": "Datum",
             "entry_type": "Typ",
             "start_time": "Startzeit",
@@ -55,12 +57,16 @@ class WorkEntryForm(forms.ModelForm):
             "break_minutes": "Pause (Minuten)",
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            self.fields["job"].queryset = Job.objects.filter(user=user)
+
     def clean(self):
         cleaned_data = super().clean()
         entry_type = cleaned_data.get("entry_type")
         start_time = cleaned_data.get("start_time")
         end_time = cleaned_data.get("end_time")
-
         if entry_type == "work":
             if not start_time:
                 self.add_error("start_time", "Startzeit ist erforderlich.")
@@ -72,5 +78,4 @@ class WorkEntryForm(forms.ModelForm):
             cleaned_data["start_time"] = None
             cleaned_data["end_time"] = None
             cleaned_data["break_minutes"] = 0
-
         return cleaned_data
