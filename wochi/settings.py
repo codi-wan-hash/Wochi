@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "meals",
     "shopping",
     "api",
+    "timetracking",
 
     "rest_framework",
     "rest_framework_simplejwt",
