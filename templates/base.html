@@ -31,6 +31,9 @@
             <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path %}active{% endif %}">Essensplanung</a>
             <a href="{% url 'recipe_list' %}" class="{% if '/meals/recipes/' in request.path %}active{% endif %}">Gerichte</a>
             <a href="{% url 'shopping_list' %}" class="{% if '/shopping/' in request.path %}active{% endif %}">Einkaufsliste</a>
+            {% if user.userprofile.timetracking_enabled %}
+            <a href="{% url 'timetracking:dashboard' %}" class="{% if '/timetracking/' in request.path %}active{% endif %}">Arbeitszeit</a>
+            {% endif %}
         </nav>
         <div class="sidebar-footer">
             <span class="sidebar-user">{{ user.username }}</span>
@@ -50,6 +53,9 @@
         <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path %}active{% endif %}">Essensplanung</a>
         <a href="{% url 'recipe_list' %}" class="{% if '/meals/recipes/' in request.path %}active{% endif %}">Gerichte</a>
         <a href="{% url 'shopping_list' %}" class="{% if '/shopping/' in request.path %}active{% endif %}">Einkaufsliste</a>
+        {% if user.userprofile.timetracking_enabled %}
+        <a href="{% url 'timetracking:dashboard' %}" class="{% if '/timetracking/' in request.path %}active{% endif %}">Arbeitszeit</a>
+        {% endif %}
     </nav>
     <div class="sidebar-footer">
         <span class="sidebar-user">{{ user.username }}</span>
