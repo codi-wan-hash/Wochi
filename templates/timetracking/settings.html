@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:600px">
+    <h1 class="h3 mb-4">Arbeitszeit – Einstellungen</h1>
+    <div class="card">
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="{{ form.bundesland.id_for_label }}" class="form-label">{{ form.bundesland.label }}</label>
+                    {{ form.bundesland }}
+                    {% if form.bundesland.errors %}<div class="invalid-feedback d-block">{{ form.bundesland.errors }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.daily_target_hours.id_for_label }}" class="form-label">{{ form.daily_target_hours.label }}</label>
+                    {{ form.daily_target_hours }}
+                    {% if form.daily_target_hours.errors %}<div class="invalid-feedback d-block">{{ form.daily_target_hours.errors }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.work_start_date.id_for_label }}" class="form-label">{{ form.work_start_date.label }}</label>
+                    {{ form.work_start_date }}
+                    <div class="form-text">Ab diesem Datum wird der Gesamtsaldo berechnet.</div>
+                    {% if form.work_start_date.errors %}<div class="invalid-feedback d-block">{{ form.work_start_date.errors }}</div>{% endif %}
+                </div>
+                <div class="mb-3 form-check">
+                    {{ form.timetracking_enabled }}
+                    <label for="{{ form.timetracking_enabled.id_for_label }}" class="form-check-label">{{ form.timetracking_enabled.label }}</label>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                    {% if profile.timetracking_enabled %}
+                    <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary">Zurück</a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

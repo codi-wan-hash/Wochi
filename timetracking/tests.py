@@ -125,3 +125,31 @@ class HolidayUtilsTest(TestCase):
         # Urlaub counts as soll fulfilled → saldo = 0
         saldo = calculate_total_saldo(user, as_of=date(2026, 5, 5))
         self.assertEqual(saldo, Decimal("0.00"))
+
+
+class SettingsViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="settingsuser", password="pw123456")
+        self.client.login(username="settingsuser", password="pw123456")
+
+    def test_settings_page_loads(self):
+        response = self.client.get("/timetracking/einstellungen/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bundesland")
+
+    def test_settings_saves_and_enables_feature(self):
+        response = self.client.post("/timetracking/einstellungen/", {
+            "timetracking_enabled": True,
+            "bundesland": "BY",
+            "daily_target_hours": "8.00",
+            "work_start_date": "2026-01-01",
+        })
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+        self.user.userprofile.refresh_from_db()
+        self.assertTrue(self.user.userprofile.timetracking_enabled)
+
+    def test_settings_requires_login(self):
+        self.client.logout()
+        response = self.client.get("/timetracking/einstellungen/")
+        self.assertRedirects(response, "/accounts/login/?next=/timetracking/einstellungen/")
