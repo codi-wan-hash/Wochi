@@ -426,3 +426,30 @@ class ReportViewTest(TestCase):
         response = self.client.get("/timetracking/bericht/2026/5/")
         self.assertIn("days_data", response.context)
         self.assertEqual(len(response.context["days_data"]), 31)
+
+
+class ReportPDFTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="pdfuser", password="pw123456", email="test@example.com")
+        self.client.login(username="pdfuser", password="pw123456")
+        from timetracking.models import Job
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"), work_start_date=date(2026, 5, 1)
+        )
+        profile.active_job = job
+        profile.save()
+
+    def test_pdf_download_returns_pdf(self):
+        response = self.client.get("/timetracking/bericht/2026/5/pdf/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+
+    def test_email_redirects_after_send(self):
+        response = self.client.post("/timetracking/bericht/2026/5/email/")
+        self.assertRedirects(response, "/timetracking/bericht/2026/5/", fetch_redirect_response=False)
