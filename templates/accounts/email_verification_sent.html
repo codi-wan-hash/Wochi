@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:500px">
+    <h1 class="h3 mb-4">Bestätigung gesendet</h1>
+    <div class="card">
+        <div class="card-body">
+            <p>Eine Bestätigung wurde an <strong>{{ pending_email }}</strong> gesendet.</p>
+            <p class="text-muted">Der Link ist gültig bis {{ expires_at|date:"d.m.Y H:i" }}.</p>
+            <a href="{% url 'profile' %}" class="btn btn-outline-secondary">Zurück zum Profil</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

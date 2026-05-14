@@ -93,3 +93,79 @@ class ProfileViewTest(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.first_name, "Bertha")
         self.assertEqual(self.user.last_name, "Beispiel")
+
+
+class EmailChangeViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="ec2", password="pw123456", email="old@x.de")
+        self.client.login(username="ec2", password="pw123456")
+
+    def test_get_loads_form(self):
+        response = self.client.get("/accounts/profil/email/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Neue E-Mail")
+
+    def test_post_sets_pending_and_sends_mail(self):
+        mail.outbox = []
+        response = self.client.post("/accounts/profil/email/", {"new_email": "new@x.de"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Bestätigung")
+        self.user.userprofile.refresh_from_db()
+        self.assertEqual(self.user.userprofile.pending_email, "new@x.de")
+        self.assertIsNotNone(self.user.userprofile.email_verification_token)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("new@x.de", mail.outbox[0].to)
+
+
+class EmailVerifyViewTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ev", password="pw123456", email="old@x.de")
+        self.token = uuid.uuid4()
+        p = self.user.userprofile
+        p.pending_email = "new@x.de"
+        p.email_verification_token = self.token
+        p.email_token_expires_at = timezone.now() + timedelta(hours=24)
+        p.save()
+
+    def test_valid_token_updates_email(self):
+        response = self.client.get(f"/accounts/profil/email/bestaetigen/{self.token}/")
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.user.userprofile.refresh_from_db()
+        self.assertEqual(self.user.email, "new@x.de")
+        self.assertIsNone(self.user.userprofile.pending_email)
+        self.assertIsNone(self.user.userprofile.email_verification_token)
+
+    def test_expired_token_rejected(self):
+        p = self.user.userprofile
+        p.email_token_expires_at = timezone.now() - timedelta(hours=1)
+        p.save()
+        response = self.client.get(f"/accounts/profil/email/bestaetigen/{self.token}/")
+        self.assertContains(response, "abgelaufen", status_code=200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "old@x.de")
+
+    def test_unknown_token_rejected(self):
+        bogus = uuid.uuid4()
+        response = self.client.get(f"/accounts/profil/email/bestaetigen/{bogus}/")
+        self.assertContains(response, "ungültig", status_code=200)
+
+
+class EmailCancelViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="cancel", password="pw123456")
+        self.client.login(username="cancel", password="pw123456")
+        p = self.user.userprofile
+        p.pending_email = "x@y.de"
+        p.email_verification_token = uuid.uuid4()
+        p.email_token_expires_at = timezone.now() + timedelta(hours=24)
+        p.save()
+
+    def test_post_clears_pending(self):
+        response = self.client.post("/accounts/profil/email/abbrechen/")
+        self.assertRedirects(response, "/accounts/profil/")
+        self.user.userprofile.refresh_from_db()
+        self.assertIsNone(self.user.userprofile.pending_email)
+        self.assertIsNone(self.user.userprofile.email_verification_token)

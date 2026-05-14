@@ -1,8 +1,12 @@
+import uuid
 from datetime import timedelta
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login
 from django.shortcuts import render, redirect
 from django.utils import timezone
+from django.urls import reverse
+from django.template.loader import render_to_string
+from django.core.mail import send_mail
 
 from households.utils import get_current_household
 from tasks.models import Task
@@ -11,7 +15,7 @@ from shopping.models import ShoppingItem
 
 from django.contrib import messages
 
-from .forms import RegisterForm, ProfileForm
+from .forms import RegisterForm, ProfileForm, EmailChangeForm
 
 
 def register_view(request):
@@ -86,3 +90,78 @@ def profile_view(request):
     else:
         form = ProfileForm(instance=request.user)
     return render(request, "accounts/profile.html", {"form": form, "profile": getattr(request.user, "userprofile", None)})
+
+
+@login_required
+def email_change_view(request):
+    profile = request.user.userprofile
+    if request.method == "POST":
+        form = EmailChangeForm(request.POST, user=request.user)
+        if form.is_valid():
+            token = uuid.uuid4()
+            profile.pending_email = form.cleaned_data["new_email"]
+            profile.email_verification_token = token
+            profile.email_token_expires_at = timezone.now() + timedelta(hours=24)
+            profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires_at"])
+
+            verification_url = request.build_absolute_uri(
+                reverse("email_verify", kwargs={"token": token})
+            )
+            body = render_to_string("accounts/email/verify_email.txt", {
+                "user": request.user,
+                "verification_url": verification_url,
+            })
+            try:
+                send_mail(
+                    subject="Wochii: E-Mail-Adresse bestätigen",
+                    message=body,
+                    from_email=None,
+                    recipient_list=[profile.pending_email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                profile.pending_email = None
+                profile.email_verification_token = None
+                profile.email_token_expires_at = None
+                profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires_at"])
+                messages.error(request, f"E-Mail konnte nicht gesendet werden: {e}")
+                return redirect("profile")
+            return render(request, "accounts/email_verification_sent.html", {
+                "pending_email": profile.pending_email,
+                "expires_at": profile.email_token_expires_at,
+            })
+    else:
+        form = EmailChangeForm(user=request.user)
+    return render(request, "accounts/email_change.html", {"form": form})
+
+
+def email_verify_view(request, token):
+    from timetracking.models import UserProfile
+    try:
+        profile = UserProfile.objects.get(email_verification_token=token)
+    except UserProfile.DoesNotExist:
+        return render(request, "accounts/email_verify_done.html", {"error": "ungültig"})
+
+    if not profile.email_token_expires_at or profile.email_token_expires_at < timezone.now():
+        return render(request, "accounts/email_verify_done.html", {"error": "abgelaufen"})
+
+    user = profile.user
+    user.email = profile.pending_email
+    user.save(update_fields=["email"])
+    profile.pending_email = None
+    profile.email_verification_token = None
+    profile.email_token_expires_at = None
+    profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires_at"])
+    return render(request, "accounts/email_verify_done.html", {"new_email": user.email})
+
+
+@login_required
+def email_cancel_view(request):
+    if request.method == "POST":
+        profile = request.user.userprofile
+        profile.pending_email = None
+        profile.email_verification_token = None
+        profile.email_token_expires_at = None
+        profile.save(update_fields=["pending_email", "email_verification_token", "email_token_expires_at"])
+        messages.info(request, "E-Mail-Änderung abgebrochen.")
+    return redirect("profile")

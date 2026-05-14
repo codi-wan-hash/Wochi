@@ -1,0 +1,10 @@
+Hallo {{ user.username }},
+
+du möchtest deine E-Mail-Adresse auf Wochii ändern. Bitte bestätige
+mit folgendem Link (gültig für 24 Stunden):
+
+{{ verification_url }}
+
+Falls du das nicht warst, ignoriere diese Mail.
+
+— Wochii
