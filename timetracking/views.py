@@ -335,7 +335,66 @@ def report_view(request, year, month):
     profile = get_or_create_profile(request.user)
     if not profile.timetracking_enabled or not profile.active_job:
         return redirect("timetracking:settings_view")
-    return render(request, "timetracking/report.html", {"year": year, "month": month})
+
+    active_job = profile.active_job
+    bundesland = profile.bundesland
+    daily_equiv = active_job.weekly_target_hours / Decimal("5")
+
+    _, days_in_month = monthrange(year, month)
+    first_day = date(year, month, 1)
+    last_day = date(year, month, days_in_month)
+    month_name = first_day.strftime("%B %Y")
+
+    entries = {
+        e.date: e
+        for e in WorkEntry.objects.filter(job=active_job, date__range=[first_day, last_day])
+    }
+
+    days_data = []
+    for i in range(1, days_in_month + 1):
+        d = date(year, month, i)
+        entry = entries.get(d)
+        holiday_name = get_holiday_name(d, bundesland)
+        is_weekend = d.weekday() >= 5
+        is_soll = not is_weekend and not holiday_name
+        soll = daily_equiv if is_soll else Decimal("0")
+        if entry:
+            if entry.entry_type == "work":
+                ist = Decimal(str(entry.worked_hours or 0))
+            else:
+                ist = daily_equiv
+        else:
+            ist = Decimal("0")
+        days_data.append({
+            "day": d,
+            "entry": entry,
+            "holiday_name": holiday_name,
+            "is_weekend": is_weekend,
+            "soll": soll,
+            "ist": ist,
+            "diff": ist - soll,
+        })
+
+    all_weeks = calculate_weekly_saldo(active_job, bundesland)
+    week_rows = [
+        w for w in all_weeks
+        if w["week_start"] <= last_day and w["week_end"] >= first_day
+    ]
+    month_soll = sum((w["soll"] for w in week_rows), Decimal("0"))
+    month_ist = sum((w["ist"] for w in week_rows), Decimal("0"))
+
+    return render(request, "timetracking/report.html", {
+        "profile": profile,
+        "active_job": active_job,
+        "year": year,
+        "month": month,
+        "month_name": month_name,
+        "days_data": days_data,
+        "week_rows": week_rows,
+        "month_soll": month_soll,
+        "month_ist": month_ist,
+        "month_saldo": month_ist - month_soll,
+    })
 
 
 @login_required

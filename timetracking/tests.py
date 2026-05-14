@@ -390,3 +390,39 @@ class JobCRUDTest(TestCase):
         response = self.client.post(f"/timetracking/jobs/{job2.pk}/loeschen/")
         self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
         self.assertEqual(Job.objects.filter(user=self.user, name="Leerjob").count(), 0)
+
+
+class ReportViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="reportuser", password="pw123456")
+        self.client.login(username="reportuser", password="pw123456")
+        from timetracking.models import Job
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 5, 1),
+        )
+        profile.active_job = self.job
+        profile.save()
+
+    def test_report_view_loads(self):
+        response = self.client.get("/timetracking/bericht/2026/5/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Arbeitszeitnachweis")
+        self.assertContains(response, "Hauptjob")
+
+    def test_report_shows_week_summary(self):
+        response = self.client.get("/timetracking/bericht/2026/5/")
+        self.assertIn("week_rows", response.context)
+        self.assertGreater(len(response.context["week_rows"]), 0)
+
+    def test_report_shows_day_details(self):
+        response = self.client.get("/timetracking/bericht/2026/5/")
+        self.assertIn("days_data", response.context)
+        self.assertEqual(len(response.context["days_data"]), 31)
