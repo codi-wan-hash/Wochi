@@ -62,18 +62,14 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
         effective_start = max(week_start, job.work_start_date)
         effective_end = min(week_end, as_of)
 
-        # Soll proportional: effective soll days / full-week soll days
-        full_week_fri = week_start + timedelta(days=4)
-        full_soll = len(get_soll_days_in_range(week_start, full_week_fri, bundesland))
+        # Soll = effektive Werktage × Tagesäquivalent (Wochensoll / 5).
+        # Feiertage/Wochenenden reduzieren das Soll, ohne dass die übrigen
+        # Tage "aufgepumpt" werden.
+        daily_equiv = job.weekly_target_hours / Decimal("5")
         eff_soll = len(get_soll_days_in_range(effective_start, effective_end, bundesland))
-
-        if full_soll > 0:
-            week_soll = job.weekly_target_hours * Decimal(eff_soll) / Decimal(full_soll)
-        else:
-            week_soll = Decimal("0")
+        week_soll = daily_equiv * Decimal(eff_soll)
 
         entries = WorkEntry.objects.filter(job=job, date__range=[effective_start, effective_end])
-        daily_equiv = job.weekly_target_hours / Decimal("5")
 
         week_ist = Decimal("0")
         for entry in entries:
