@@ -28,3 +28,39 @@ class UserProfileEmailFieldsTest(TestCase):
         p.refresh_from_db()
         self.assertEqual(p.pending_email, "new@example.com")
         self.assertEqual(p.email_verification_token, token)
+
+
+class ProfileFormTest(TestCase):
+    def test_saves_username_and_names(self):
+        from accounts.forms import ProfileForm
+        user = User.objects.create_user(username="orig", password="pw123456", first_name="Old", last_name="Name")
+        form = ProfileForm(data={"username": "newname", "first_name": "Max", "last_name": "Mustermann"}, instance=user)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        user.refresh_from_db()
+        self.assertEqual(user.username, "newname")
+        self.assertEqual(user.first_name, "Max")
+        self.assertEqual(user.last_name, "Mustermann")
+
+
+class EmailChangeFormTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ec", password="pw123456", email="me@old.de")
+
+    def test_rejects_same_email(self):
+        from accounts.forms import EmailChangeForm
+        form = EmailChangeForm(user=self.user, data={"new_email": "me@old.de"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("new_email", form.errors)
+
+    def test_rejects_existing_email(self):
+        User.objects.create_user(username="other", password="pw123456", email="taken@x.de")
+        from accounts.forms import EmailChangeForm
+        form = EmailChangeForm(user=self.user, data={"new_email": "taken@x.de"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("new_email", form.errors)
+
+    def test_accepts_new_unique_email(self):
+        from accounts.forms import EmailChangeForm
+        form = EmailChangeForm(user=self.user, data={"new_email": "fresh@x.de"})
+        self.assertTrue(form.is_valid(), form.errors)
