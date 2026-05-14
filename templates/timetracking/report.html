@@ -31,15 +31,36 @@
     {% endif %}
 </head>
 <body class="p-4">
-    <div class="no-print mb-3 d-flex gap-2">
+    <div class="no-print mb-3 d-flex gap-2 flex-wrap">
         <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
         <a href="{% url 'timetracking:report_pdf' year month %}" class="btn btn-primary btn-sm">PDF herunterladen</a>
+        {% if profile.user.email %}
         <form method="post" action="{% url 'timetracking:report_email' year month %}" class="d-inline">
             {% csrf_token %}
-            <button type="submit" class="btn btn-outline-primary btn-sm">Per E-Mail senden</button>
+            <button type="submit" class="btn btn-outline-primary btn-sm">Per E-Mail an {{ profile.user.email }}</button>
         </form>
+        {% else %}
+        <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Keine E-Mail-Adresse hinterlegt">Per E-Mail senden</button>
+        {% endif %}
         <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">Drucken</button>
     </div>
+
+    {% if not pdf_mode and messages %}
+    <div class="no-print mb-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not pdf_mode and not profile.user.email %}
+    <div class="no-print alert alert-warning">
+        Du hast keine E-Mail-Adresse hinterlegt. Bitte hinterlege eine im Profil, um Berichte per E-Mail zu versenden.
+    </div>
+    {% endif %}
 
     <div class="mb-4">
         <h2 class="h4">Arbeitszeitnachweis</h2>
