@@ -114,11 +114,53 @@ h1, h2, h3, h4, h5, h6 {
   gap: 0.5rem;
 }
 .sidebar-user {
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  overflow: hidden;
+}
+.sidebar-user::before {
+  content: attr(data-initial);
+  flex: 0 0 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-primary, #c2410c);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.sidebar-user-name {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.sidebar-user-gear {
+  flex: 0 0 auto;
+  opacity: 0.5;
+  font-size: 0.95rem;
+  transition: opacity 0.15s, transform 0.2s;
+}
+.sidebar-user:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.sidebar-user:hover .sidebar-user-gear {
+  opacity: 1;
+  transform: rotate(45deg);
 }
 .sidebar-logout-btn {
   width: 100%;

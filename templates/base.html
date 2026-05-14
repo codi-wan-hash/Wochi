@@ -36,7 +36,10 @@
             {% endif %}
         </nav>
         <div class="sidebar-footer">
-            <a href="{% url 'profile' %}" class="sidebar-user">{{ user.username }}</a>
+            <a href="{% url 'profile' %}" class="sidebar-user" title="Profil &amp; Einstellungen" data-initial="{{ user.username|first|upper }}">
+                <span class="sidebar-user-name">{{ user.username }}</span>
+                <span class="sidebar-user-gear" aria-hidden="true">⚙︎</span>
+            </a>
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
                 <button type="submit" class="sidebar-logout-btn">Abmelden</button>
@@ -58,7 +61,10 @@
         {% endif %}
     </nav>
     <div class="sidebar-footer">
-        <a href="{% url 'profile' %}" class="sidebar-user">{{ user.username }}</a>
+        <a href="{% url 'profile' %}" class="sidebar-user" title="Profil &amp; Einstellungen" data-initial="{{ user.username|first|upper }}">
+            <span class="sidebar-user-name">{{ user.username }}</span>
+            <span class="sidebar-user-gear" aria-hidden="true">⚙︎</span>
+        </a>
         <form method="post" action="{% url 'logout' %}">
             {% csrf_token %}
             <button type="submit" class="sidebar-logout-btn">Abmelden</button>
