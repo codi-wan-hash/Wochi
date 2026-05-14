@@ -169,3 +169,19 @@ class EmailCancelViewTest(TestCase):
         self.user.userprofile.refresh_from_db()
         self.assertIsNone(self.user.userprofile.pending_email)
         self.assertIsNone(self.user.userprofile.email_verification_token)
+
+
+class PasswordChangeSmokeTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="pwc", password="pw123456")
+        self.client.login(username="pwc", password="pw123456")
+
+    def test_change_form_loads(self):
+        response = self.client.get("/accounts/profil/passwort/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Passwort")
+
+    def test_done_page_loads(self):
+        response = self.client.get("/accounts/profil/passwort/erfolg/")
+        self.assertEqual(response.status_code, 200)
