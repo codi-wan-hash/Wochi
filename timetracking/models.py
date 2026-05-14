@@ -59,6 +59,9 @@ class UserProfile(models.Model):
     # Legacy fields kept temporarily for data migration — removed in Task 3
     daily_target_hours = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("8.00"))
     work_start_date = models.DateField(null=True, blank=True)
+    pending_email = models.EmailField(null=True, blank=True)
+    email_verification_token = models.UUIDField(null=True, blank=True, unique=True)
+    email_token_expires_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Profile({self.user.username})"
