@@ -11,6 +11,7 @@ from .forms import UserProfileForm, WorkEntryForm
 from .models import WorkEntry
 from .utils import (
     calculate_total_saldo,
+    calculate_weekly_saldo,
     get_holiday_name,
     get_or_create_profile,
     get_soll_days_in_range,
@@ -38,9 +39,12 @@ def settings_view(request):
 @login_required
 def dashboard(request):
     profile = get_or_create_profile(request.user)
-    if not profile.timetracking_enabled:
+    if not profile.timetracking_enabled or not profile.active_job:
         return redirect("timetracking:settings_view")
 
+    active_job = profile.active_job
+    all_jobs = request.user.jobs.all()
+    bundesland = profile.bundesland
     today = date.today()
 
     monday = today - timedelta(days=today.weekday())
@@ -48,23 +52,23 @@ def dashboard(request):
     entries_this_week = {
         e.date: e
         for e in WorkEntry.objects.filter(
-            user=request.user, date__range=[week_days[0], week_days[-1]]
+            job=active_job, date__range=[week_days[0], week_days[-1]]
         )
     }
 
+    daily_equiv = active_job.weekly_target_hours / Decimal("5")
     week_data = []
     for day in week_days:
         entry = entries_this_week.get(day)
-        holiday_name = get_holiday_name(day, profile.bundesland)
+        holiday_name = get_holiday_name(day, bundesland)
         is_weekend = day.weekday() >= 5
         is_soll = not is_weekend and not holiday_name
-        soll = profile.daily_target_hours if is_soll else Decimal("0")
 
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = profile.daily_target_hours
+                ist = daily_equiv
         else:
             ist = Decimal("0")
 
@@ -74,42 +78,45 @@ def dashboard(request):
             "entry": entry,
             "holiday_name": holiday_name,
             "is_weekend": is_weekend,
-            "soll": soll,
             "ist": ist,
-            "diff": Decimal("0") if pending else ist - soll,
             "pending": pending,
         })
+
+    week_saldo_data = calculate_weekly_saldo(active_job, bundesland)
+    current_week = next((w for w in week_saldo_data if w["is_current"]), None)
+    total_saldo = calculate_total_saldo(active_job, bundesland)
 
     first_of_month = today.replace(day=1)
     _, days_in_month = monthrange(today.year, today.month)
     last_of_month = today.replace(day=days_in_month)
-    month_soll_days = get_soll_days_in_range(first_of_month, last_of_month, profile.bundesland)
-    month_soll = Decimal(str(len(month_soll_days))) * profile.daily_target_hours
+    month_soll_days = get_soll_days_in_range(first_of_month, last_of_month, bundesland)
+    month_soll = active_job.weekly_target_hours / Decimal("5") * Decimal(str(len(month_soll_days)))
 
     entries_this_month = WorkEntry.objects.filter(
-        user=request.user, date__year=today.year, date__month=today.month
+        job=active_job, date__year=today.year, date__month=today.month
     )
     month_ist = Decimal("0")
     for e in entries_this_month:
         if e.entry_type == "work":
             month_ist += Decimal(str(e.worked_hours or 0))
         else:
-            month_ist += profile.daily_target_hours
-
-    total_saldo = calculate_total_saldo(request.user)
+            month_ist += daily_equiv
 
     prev_month_first = (first_of_month - timedelta(days=1)).replace(day=1)
     next_month_first = last_of_month + timedelta(days=1)
 
     return render(request, "timetracking/dashboard.html", {
         "profile": profile,
+        "active_job": active_job,
+        "all_jobs": all_jobs,
         "today": today,
         "week_data": week_data,
+        "current_week": current_week,
+        "total_saldo": total_saldo,
         "month_soll_days": len(month_soll_days),
         "month_soll": month_soll,
         "month_ist": month_ist,
         "month_saldo": month_ist - month_soll,
-        "total_saldo": total_saldo,
         "prev_month": prev_month_first,
         "next_month": next_month_first,
     })
@@ -182,8 +189,12 @@ def entry_delete(request, pk):
 @login_required
 def month_detail(request, year, month):
     profile = get_or_create_profile(request.user)
-    if not profile.timetracking_enabled:
+    if not profile.timetracking_enabled or not profile.active_job:
         return redirect("timetracking:settings_view")
+
+    active_job = profile.active_job
+    bundesland = profile.bundesland
+    daily_equiv = active_job.weekly_target_hours / Decimal("5")
 
     _, days_in_month = monthrange(year, month)
     first_day = date(year, month, 1)
@@ -191,23 +202,23 @@ def month_detail(request, year, month):
 
     entries = {
         e.date: e
-        for e in WorkEntry.objects.filter(user=request.user, date__range=[first_day, last_day])
+        for e in WorkEntry.objects.filter(job=active_job, date__range=[first_day, last_day])
     }
 
     days_data = []
     for i in range(1, days_in_month + 1):
         d = date(year, month, i)
         entry = entries.get(d)
-        holiday_name = get_holiday_name(d, profile.bundesland)
+        holiday_name = get_holiday_name(d, bundesland)
         is_weekend = d.weekday() >= 5
         is_soll = not is_weekend and not holiday_name
-        soll = profile.daily_target_hours if is_soll else Decimal("0")
+        soll = daily_equiv if is_soll else Decimal("0")
 
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = profile.daily_target_hours
+                ist = daily_equiv
         else:
             ist = Decimal("0")
 
@@ -230,6 +241,7 @@ def month_detail(request, year, month):
 
     return render(request, "timetracking/month_detail.html", {
         "profile": profile,
+        "active_job": active_job,
         "year": year,
         "month": month,
         "month_name": first_day.strftime("%B %Y"),

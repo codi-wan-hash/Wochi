@@ -266,27 +266,34 @@ class DashboardTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="dashuser", password="pw123456")
         self.client.login(username="dashuser", password="pw123456")
+        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
-        profile.daily_target_hours = Decimal("8.00")
-        profile.work_start_date = date(2026, 1, 1)
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        profile.active_job = self.job
         profile.save()
 
     def test_dashboard_loads(self):
         response = self.client.get("/timetracking/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Gesamtsaldo")
+        self.assertContains(response, "Hauptjob")
 
     def test_dashboard_shows_week_data(self):
         response = self.client.get("/timetracking/")
         self.assertIn("week_data", response.context)
         self.assertEqual(len(response.context["week_data"]), 7)
 
-    def test_dashboard_shows_month_data(self):
+    def test_dashboard_shows_active_job(self):
         response = self.client.get("/timetracking/")
-        self.assertIn("month_soll_days", response.context)
-        self.assertGreater(response.context["month_soll_days"], 0)
+        self.assertEqual(response.context["active_job"], self.job)
 
 
 class MonthDetailTest(TestCase):
@@ -294,11 +301,18 @@ class MonthDetailTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="monthuser", password="pw123456")
         self.client.login(username="monthuser", password="pw123456")
+        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
-        profile.daily_target_hours = Decimal("8.00")
-        profile.work_start_date = date(2026, 1, 1)
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user,
+            name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        profile.active_job = self.job
         profile.save()
 
     def test_month_detail_loads(self):
@@ -311,7 +325,6 @@ class MonthDetailTest(TestCase):
 
     def test_month_detail_soll_days_exclude_weekends_and_holidays(self):
         response = self.client.get("/timetracking/monat/2026/5/")
-        # May 2026 has 31 days, weekends + May 1 (holiday) excluded
         self.assertGreater(response.context["soll_days_count"], 0)
         self.assertLessEqual(response.context["soll_days_count"], 22)
 
