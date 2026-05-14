@@ -9,7 +9,9 @@ from tasks.models import Task
 from meals.models import MealPlan
 from shopping.models import ShoppingItem
 
-from .forms import RegisterForm
+from django.contrib import messages
+
+from .forms import RegisterForm, ProfileForm
 
 
 def register_view(request):
@@ -71,3 +73,16 @@ def home(request):
         })
 
     return render(request, "home.html", context)
+
+
+@login_required
+def profile_view(request):
+    if request.method == "POST":
+        form = ProfileForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profil aktualisiert.")
+            return redirect("profile")
+    else:
+        form = ProfileForm(instance=request.user)
+    return render(request, "accounts/profile.html", {"form": form, "profile": getattr(request.user, "userprofile", None)})

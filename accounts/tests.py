@@ -64,3 +64,32 @@ class EmailChangeFormTest(TestCase):
         from accounts.forms import EmailChangeForm
         form = EmailChangeForm(user=self.user, data={"new_email": "fresh@x.de"})
         self.assertTrue(form.is_valid(), form.errors)
+
+
+class ProfileViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="pv", password="pw123456", email="pv@x.de", first_name="Anna")
+        self.client.login(username="pv", password="pw123456")
+
+    def test_get_loads(self):
+        response = self.client.get("/accounts/profil/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Anna")
+        self.assertContains(response, "pv@x.de")
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get("/accounts/profil/")
+        self.assertRedirects(response, "/accounts/login/?next=/accounts/profil/")
+
+    def test_post_updates_user_fields(self):
+        response = self.client.post("/accounts/profil/", {
+            "username": "pv",
+            "first_name": "Bertha",
+            "last_name": "Beispiel",
+        })
+        self.assertRedirects(response, "/accounts/profil/")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Bertha")
+        self.assertEqual(self.user.last_name, "Beispiel")
