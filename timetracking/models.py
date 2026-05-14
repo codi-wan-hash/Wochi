@@ -91,7 +91,7 @@ class WorkEntry(models.Model):
     break_minutes = models.IntegerField(default=0)
 
     class Meta:
-        unique_together = ("user", "date")
+        unique_together = ("job", "date")
         ordering = ["-date"]
 
     def __str__(self):

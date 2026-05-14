@@ -62,7 +62,9 @@
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-3">Tag</th>
-                                <th class="text-end pe-3">Ist</th>
+                                <th class="text-end">Ist</th>
+                                <th class="text-end">Soll</th>
+                                <th class="text-end pe-3">Diff</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -79,18 +81,22 @@
                                 </small>
                                 {% endif %}
                             </td>
-                            <td class="text-end pe-3">
-                                {% if not d.is_weekend %}
-                                    {% if d.pending %}–{% else %}{{ d.ist|floatformat:2 }}h{% endif %}
-                                {% endif %}
+                            <td class="text-end">
+                                {% if d.no_value %}–{% elif d.is_weekend %}{% else %}{{ d.ist|floatformat:2 }}h{% endif %}
                             </td>
                             <td class="text-end">
+                                {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% else %}–{% endif %}
+                            </td>
+                            <td class="text-end pe-3 {% if d.is_soll and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                                {% if d.pending or not d.is_soll %}–{% else %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
+                            </td>
+                            <td class="text-end pe-3">
                                 {% if not d.is_weekend and not d.holiday_name %}
                                     {% if d.entry %}
-                                    <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-1">&#9998;</a>
-                                    <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-1">&#10005;</a>
+                                    <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten">✎</a>
+                                    <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen">×</a>
                                     {% else %}
-                                    <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-1">+</a>
+                                    <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen">+</a>
                                     {% endif %}
                                 {% endif %}
                             </td>

@@ -74,4 +74,13 @@ class WorkEntryForm(forms.ModelForm):
             cleaned_data["start_time"] = None
             cleaned_data["end_time"] = None
             cleaned_data["break_minutes"] = 0
+
+        job = cleaned_data.get("job")
+        entry_date = cleaned_data.get("date")
+        if job and entry_date:
+            existing = WorkEntry.objects.filter(job=job, date=entry_date)
+            if self.instance.pk:
+                existing = existing.exclude(pk=self.instance.pk)
+            if existing.exists():
+                self.add_error("date", f'Für „{job.name}“ gibt es bereits einen Eintrag am {entry_date.strftime("%d.%m.%Y")}.')
         return cleaned_data

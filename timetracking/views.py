@@ -63,6 +63,7 @@ def dashboard(request):
         holiday_name = get_holiday_name(day, bundesland)
         is_weekend = day.weekday() >= 5
         is_soll = not is_weekend and not holiday_name
+        soll = daily_equiv if is_soll else Decimal("0")
 
         if entry:
             if entry.entry_type == "work":
@@ -72,28 +73,46 @@ def dashboard(request):
         else:
             ist = Decimal("0")
 
-        pending = day == today and not entry and is_soll
+        # No deficit for today/future without entry; holidays show "–"
+        pending = is_soll and not entry and day >= today
+        no_value = is_weekend or (holiday_name and not entry)
         week_data.append({
             "day": day,
             "entry": entry,
             "holiday_name": holiday_name,
             "is_weekend": is_weekend,
+            "is_soll": is_soll,
+            "soll": soll,
             "ist": ist,
+            "diff": Decimal("0") if pending else ist - soll,
             "pending": pending,
+            "no_value": no_value,
         })
 
     week_saldo_data = calculate_weekly_saldo(active_job, bundesland)
     current_week = next((w for w in week_saldo_data if w["is_current"]), None)
     total_saldo = calculate_total_saldo(active_job, bundesland)
 
+    # Monatsübersicht: nur bis heute (keine Zukunfts-Tage zählen)
     first_of_month = today.replace(day=1)
     _, days_in_month = monthrange(today.year, today.month)
     last_of_month = today.replace(day=days_in_month)
-    month_soll_days = get_soll_days_in_range(first_of_month, last_of_month, bundesland)
-    month_soll = active_job.weekly_target_hours / Decimal("5") * Decimal(str(len(month_soll_days)))
+    # Soll bis einschl. gestern (heute zählt nur mit Eintrag, siehe unten)
+    soll_end = today - timedelta(days=1)
+    if soll_end < first_of_month:
+        past_soll_days = []
+    else:
+        past_soll_days = get_soll_days_in_range(first_of_month, soll_end, bundesland)
+    # Heute zählt nur, wenn Eintrag existiert UND Werktag
+    today_entry = WorkEntry.objects.filter(job=active_job, date=today).first()
+    today_is_soll = not (today.weekday() >= 5) and not get_holiday_name(today, bundesland)
+    month_soll_days_count = len(past_soll_days)
+    if today_entry and today_is_soll:
+        month_soll_days_count += 1
+    month_soll = daily_equiv * Decimal(str(month_soll_days_count))
 
     entries_this_month = WorkEntry.objects.filter(
-        job=active_job, date__year=today.year, date__month=today.month
+        job=active_job, date__year=today.year, date__month=today.month, date__lte=today
     )
     month_ist = Decimal("0")
     for e in entries_this_month:
@@ -101,6 +120,9 @@ def dashboard(request):
             month_ist += Decimal(str(e.worked_hours or 0))
         else:
             month_ist += daily_equiv
+
+    # Anzeige-Wert: Anzahl aller Soll-Werktage des Monats (informativ)
+    month_soll_days_total = len(get_soll_days_in_range(first_of_month, last_of_month, bundesland))
 
     prev_month_first = (first_of_month - timedelta(days=1)).replace(day=1)
     next_month_first = last_of_month + timedelta(days=1)
@@ -113,7 +135,7 @@ def dashboard(request):
         "week_data": week_data,
         "current_week": current_week,
         "total_saldo": total_saldo,
-        "month_soll_days": len(month_soll_days),
+        "month_soll_days": month_soll_days_total,
         "month_soll": month_soll,
         "month_ist": month_ist,
         "month_saldo": month_ist - month_soll,
@@ -280,6 +302,10 @@ def job_create(request):
             job.user = request.user
             job.save()
             messages.success(request, f'Job „{job.name}“ wurde erstellt.')
+            if profile.active_job is None:
+                profile.active_job = job
+                profile.save(update_fields=["active_job"])
+                return redirect("timetracking:dashboard")
             return redirect("timetracking:job_list")
     else:
         form = JobForm()

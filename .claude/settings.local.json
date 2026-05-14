@@ -5,7 +5,18 @@
       "Bash(.venv/Scripts/python manage.py migrate)",
       "Bash(.venv/Scripts/pip freeze *)",
       "Bash(.venv/Scripts/python manage.py check)",
-      "Bash(.venv/Scripts/python manage.py shell -c ' *)"
+      "Bash(.venv/Scripts/python manage.py shell -c ' *)",
+      "Bash(venv/bin/python *)",
+      "Read(//home/stefan/Projekte/wochi-app/src/screens/**)",
+      "Bash(git -C /home/stefan/Projekte/Wochi add api/serializers.py api/urls.py api/views.py households/models.py households/migrations/0002_household_invite_token.py)",
+      "Bash(git -C /home/stefan/Projekte/Wochi commit -m ' *)",
+      "Bash(git -C /home/stefan/Projekte/wochi-app add src/theme.js src/components/BottomSheet.js src/context/HouseholdContext.js src/navigation/AppNavigator.js src/screens/HouseholdSetupScreen.js src/screens/LoginScreen.js src/screens/MealsScreen.js src/screens/ProfileScreen.js src/screens/RecipeDetailScreen.js src/screens/RecipesScreen.js src/screens/RegisterScreen.js src/screens/ShoppingScreen.js src/screens/ShoppingStartScreen.js src/screens/TasksScreen.js)",
+      "Bash(git -C /home/stefan/Projekte/wochi-app commit -m ' *)",
+      "Read(//home/stefan/Projekte/wochi-app/**)",
+      "Bash(git -C /home/stefan/Projekte/Wochi log --oneline -3)",
+      "Bash(git -C /home/stefan/Projekte/Wochi remote -v)",
+      "Bash(git *)",
+      "\"*\""
     ]
   }
 }

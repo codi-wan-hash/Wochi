@@ -85,10 +85,10 @@
                     <td>
                         {% if not d.is_weekend and not d.holiday_name %}
                             {% if d.entry %}
-                            <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-1">✏</a>
-                            <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-1">&#10005;</a>
+                            <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten">✎</a>
+                            <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen">×</a>
                             {% else %}
-                            <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-1">+</a>
+                            <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen">+</a>
                             {% endif %}
                         {% endif %}
                     </td>

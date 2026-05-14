@@ -27,8 +27,8 @@
                     <button class="btn btn-sm btn-outline-success">Aktivieren</button>
                 </form>
                 {% endif %}
-                <a href="{% url 'timetracking:job_edit' job.pk %}" class="btn btn-sm btn-outline-secondary">✎</a>
-                <a href="{% url 'timetracking:job_delete' job.pk %}" class="btn btn-sm btn-outline-danger">✕</a>
+                <a href="{% url 'timetracking:job_edit' job.pk %}" class="btn btn-sm btn-outline-secondary px-2" title="Bearbeiten">✎</a>
+                <a href="{% url 'timetracking:job_delete' job.pk %}" class="btn btn-sm btn-outline-danger px-2" title="Löschen">×</a>
             </div>
         </div>
         {% endfor %}
