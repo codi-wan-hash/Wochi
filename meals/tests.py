@@ -4,6 +4,7 @@ from django.test import Client, TestCase
 
 from households.models import Household
 from meals.models import Recipe, Ingredient
+from meals.utils import get_ingredient_autocomplete
 from shopping.models import ShoppingItem
 
 User = get_user_model()
@@ -22,10 +23,9 @@ class IngredientAutocompleteUtilTest(TestCase):
         ShoppingItem.objects.create(household=self.household, name="tomaten", added_by=self.user)
         ShoppingItem.objects.create(household=self.household, name="Hähnchen", added_by=self.user)
 
-        from meals.utils import get_ingredient_autocomplete
         result = get_ingredient_autocomplete(self.household)
 
-        self.assertEqual(sorted(result), ["Hähnchen", "Reis", "Tomaten"])
+        self.assertEqual(result, ["Hähnchen", "Reis", "Tomaten"])
 
     def test_autocomplete_scoped_to_household(self):
         other = Household.objects.create(name="Other")
@@ -34,7 +34,16 @@ class IngredientAutocompleteUtilTest(TestCase):
         other_recipe = Recipe.objects.create(household=other, title="X", created_by=other_user)
         Ingredient.objects.create(recipe=other_recipe, name="DoNotShow", quantity="")
 
-        from meals.utils import get_ingredient_autocomplete
         result = get_ingredient_autocomplete(self.household)
 
         self.assertNotIn("DoNotShow", result)
+
+    def test_autocomplete_empty_household_returns_empty_list(self):
+        self.assertEqual(get_ingredient_autocomplete(self.household), [])
+
+    def test_autocomplete_skips_whitespace_only_names(self):
+        recipe = Recipe.objects.create(household=self.household, title="R", created_by=self.user)
+        Ingredient.objects.create(recipe=recipe, name="   ", quantity="")
+        Ingredient.objects.create(recipe=recipe, name="Reis", quantity="200g")
+        result = get_ingredient_autocomplete(self.household)
+        self.assertEqual(result, ["Reis"])
