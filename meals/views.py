@@ -679,4 +679,51 @@ def ai_generator_suggest(request):
 
 @login_required
 def ai_generator_save(request):
-    return JsonResponse({"error": "not implemented yet"}, status=501)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    household = get_current_household(request.user)
+    if not household:
+        return JsonResponse({"error": "Kein Haushalt aktiv."}, status=400)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return JsonResponse({"error": "Titel fehlt."}, status=400)
+
+    instructions = (payload.get("instructions") or "").strip()
+    duration_min = payload.get("duration_min")
+    notes_bits = []
+    if duration_min:
+        notes_bits.append(f"~{duration_min} min")
+    notes_bits.append("per AI generiert")
+    notes = " · ".join(notes_bits)
+
+    final_title = title
+    counter = 2
+    while Recipe.objects.filter(household=household, title=final_title).exists():
+        final_title = f"{title} ({counter})"
+        counter += 1
+
+    recipe = Recipe.objects.create(
+        household=household,
+        title=final_title,
+        notes=notes,
+        instructions=instructions,
+        created_by=request.user,
+    )
+
+    ingredients_payload = payload.get("ingredients") or []
+    Ingredient.objects.bulk_create([
+        Ingredient(recipe=recipe, name=(i.get("name") or "").strip(), quantity=(i.get("quantity") or "").strip())
+        for i in ingredients_payload if (i.get("name") or "").strip()
+    ])
+
+    return JsonResponse({
+        "recipe_id": recipe.pk,
+        "redirect_url": f"/meals/recipes/{recipe.pk}/",
+    })

@@ -163,3 +163,71 @@ class AIGeneratorSuggestTest(TestCase):
 
         response = self._post(ingredients=["reis"], portions=2, filters=[])
         self.assertEqual(response.status_code, 502)
+
+
+class AIGeneratorSaveTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="saver", password="pw123456")
+        self.household = Household.objects.create(name="Casa")
+        self.household.members.add(self.user)
+        self.client.login(username="saver", password="pw123456")
+
+    def _payload(self, **overrides):
+        payload = {
+            "title": "Hähnchen-Reis-Pfanne",
+            "duration_min": 25,
+            "ingredients": [
+                {"name": "Hähnchen", "quantity": "300g"},
+                {"name": "Reis", "quantity": "200g"},
+            ],
+            "instructions": "1. Reis aufsetzen.\n2. Hähnchen anbraten.",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _post(self, payload):
+        return self.client.post(
+            "/meals/ai-generator/save/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_save_requires_post(self):
+        response = self.client.get("/meals/ai-generator/save/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_save_requires_household(self):
+        self.household.members.clear()
+        response = self._post(self._payload())
+        self.assertEqual(response.status_code, 400)
+
+    def test_save_rejects_empty_title(self):
+        response = self._post(self._payload(title=""))
+        self.assertEqual(response.status_code, 400)
+
+    def test_save_creates_recipe_and_ingredients(self):
+        response = self._post(self._payload())
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        recipe = Recipe.objects.get(pk=body["recipe_id"])
+        self.assertEqual(recipe.household, self.household)
+        self.assertEqual(recipe.created_by, self.user)
+        self.assertEqual(recipe.title, "Hähnchen-Reis-Pfanne")
+        self.assertIn("~25 min", recipe.notes)
+        self.assertEqual(recipe.ingredients.count(), 2)
+        self.assertEqual(body["redirect_url"], f"/meals/recipes/{recipe.pk}/")
+
+    def test_save_collision_appends_suffix(self):
+        Recipe.objects.create(household=self.household, title="Hähnchen-Reis-Pfanne", created_by=self.user)
+        response = self._post(self._payload())
+        self.assertEqual(response.status_code, 200)
+        recipe = Recipe.objects.get(pk=response.json()["recipe_id"])
+        self.assertEqual(recipe.title, "Hähnchen-Reis-Pfanne (2)")
+
+    def test_save_collision_walks_to_three(self):
+        Recipe.objects.create(household=self.household, title="Hähnchen-Reis-Pfanne", created_by=self.user)
+        Recipe.objects.create(household=self.household, title="Hähnchen-Reis-Pfanne (2)", created_by=self.user)
+        response = self._post(self._payload())
+        recipe = Recipe.objects.get(pk=response.json()["recipe_id"])
+        self.assertEqual(recipe.title, "Hähnchen-Reis-Pfanne (3)")
