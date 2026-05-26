@@ -4,9 +4,14 @@ from datetime import timedelta, datetime
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
+
+try:
+    from openai import OpenAI  # exposed at module-level for test patching
+except ImportError:  # pragma: no cover
+    OpenAI = None
 
 from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions, merge_quantities, parse_quantity, _format_qty
 from shopping.models import ShoppingItem
@@ -593,7 +598,86 @@ def ai_generator_form(request):
 
 @login_required
 def ai_generator_suggest(request):
-    return JsonResponse({"error": "not implemented yet"}, status=501)
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+
+    ingredients = [str(x).strip() for x in (payload.get("ingredients") or []) if str(x).strip()]
+    if not ingredients:
+        return JsonResponse({"error": "Mindestens 1 Zutat angeben."}, status=400)
+    if len(ingredients) > 30:
+        return JsonResponse({"error": "Maximal 30 Zutaten."}, status=400)
+
+    try:
+        raw_portions = payload.get("portions")
+        portions = int(raw_portions if raw_portions is not None else 2)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Portionen müssen eine Zahl sein."}, status=400)
+    if not (1 <= portions <= 50):
+        return JsonResponse({"error": "Portionen müssen zwischen 1 und 50 liegen."}, status=400)
+
+    filters = [str(f).strip().lower() for f in (payload.get("filters") or []) if str(f).strip()]
+
+    api_key = getattr(settings, "OPENAI_API_KEY", "")
+    if not api_key:
+        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert."}, status=503)
+
+    ingredients_csv = ", ".join(ingredients)
+    filter_csv = ", ".join(filters) if filters else "keine"
+    prompt = (
+        f"Du bist Kochassistent. User hat folgende Zutaten zur Verfügung: {ingredients_csv}.\n"
+        f"Erstelle genau 3 verschiedene Rezeptvorschläge für {portions} Portion(en).\n"
+        f"Filter (falls aktiv): {filter_csv}.\n\n"
+        "Regeln:\n"
+        "- Nutze möglichst nur die genannten Zutaten. Übliche Pantry-Items (Salz, Pfeffer, Öl, Wasser) darfst du ergänzen.\n"
+        "- Bei Filter 'vegetarisch': kein Fleisch/Fisch.\n"
+        "- Bei Filter 'vegan': zusätzlich keine tierischen Produkte.\n"
+        "- Bei Filter 'glutenfrei': kein Weizen/Roggen/Gerste.\n"
+        "- Bei Filter 'schnell': Zubereitung max 30 Minuten.\n\n"
+        "Antworte ausschließlich mit folgendem JSON:\n"
+        "{\n"
+        '  "suggestions": [\n'
+        '    {\n'
+        '      "title": "Kurzer prägnanter Rezeptname",\n'
+        '      "duration_min": 25,\n'
+        '      "ingredients": [{"name": "Hähnchenbrust", "quantity": "300g"}],\n'
+        '      "instructions": "1. Reis aufsetzen.\\n2. ..."\n'
+        '    }\n'
+        '  ]\n'
+        "}\n"
+        "Genau 3 Vorschläge. Mengen in deutscher Notation (g, ml, EL, TL, Stück)."
+    )
+
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except Exception as e:
+        try:
+            from openai import RateLimitError
+            if isinstance(e, RateLimitError):
+                return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
+        except ImportError:
+            pass
+        return JsonResponse({"error": str(e)}, status=500)
+
+    suggestions = data.get("suggestions") or []
+    if len(suggestions) != 3:
+        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+    for s in suggestions:
+        if not (s.get("title") and isinstance(s.get("ingredients"), list) and s.get("instructions")):
+            return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+
+    return JsonResponse({"suggestions": suggestions})
 
 
 @login_required
