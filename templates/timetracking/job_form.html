@@ -1,27 +1,53 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container py-4" style="max-width:500px">
+<div class="container py-4" style="max-width:760px">
     <h1 class="h3 mb-4">{{ title }}</h1>
     <div class="card">
         <div class="card-body">
             <form method="post">
                 {% csrf_token %}
-                <div class="mb-3">
-                    <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
-                    {{ form.name }}
-                    {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors }}</div>{% endif %}
+                <div class="row g-3 mb-3">
+                    <div class="col-md-7">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}</label>
+                        {{ form.name }}
+                        {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-5">
+                        <label for="{{ form.work_start_date.id_for_label }}" class="form-label">{{ form.work_start_date.label }}</label>
+                        {{ form.work_start_date }}
+                        <div class="form-text">Ab diesem Datum wird der Saldo für diesen Job berechnet.</div>
+                        {% if form.work_start_date.errors %}<div class="invalid-feedback d-block">{{ form.work_start_date.errors }}</div>{% endif %}
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label for="{{ form.weekly_target_hours.id_for_label }}" class="form-label">{{ form.weekly_target_hours.label }}</label>
-                    {{ form.weekly_target_hours }}
-                    {% if form.weekly_target_hours.errors %}<div class="invalid-feedback d-block">{{ form.weekly_target_hours.errors }}</div>{% endif %}
+
+                <hr class="my-4">
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="h5 mb-0">Sollstunden pro Wochentag</h2>
+                    <span class="text-muted small">Wochensoll: <strong id="weekly-sum">0.00</strong> h</span>
                 </div>
-                <div class="mb-3">
-                    <label for="{{ form.work_start_date.id_for_label }}" class="form-label">{{ form.work_start_date.label }}</label>
-                    {{ form.work_start_date }}
-                    <div class="form-text">Ab diesem Datum wird der Saldo für diesen Job berechnet.</div>
-                    {% if form.work_start_date.errors %}<div class="invalid-feedback d-block">{{ form.work_start_date.errors }}</div>{% endif %}
+
+                <div class="row row-cols-2 row-cols-md-4 row-cols-lg-7 g-2 mb-3">
+                    {% for field in form %}
+                        {% if field.name in "monday_hours,tuesday_hours,wednesday_hours,thursday_hours,friday_hours,saturday_hours,sunday_hours" %}
+                            <div class="col">
+                                <label for="{{ field.id_for_label }}" class="form-label small mb-1">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}<div class="invalid-feedback d-block">{{ field.errors }}</div>{% endif %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
                 </div>
+
+                <div class="bg-light rounded p-3 mb-3">
+                    <label for="distribute-total" class="form-label small mb-1">Schnellverteilung: Gesamt-Wochenstunden gleichmäßig auf Mo–Fr verteilen</label>
+                    <div class="input-group input-group-sm" style="max-width:360px">
+                        <input type="number" id="distribute-total" class="form-control" step="0.25" min="0" placeholder="z. B. 40">
+                        <button type="button" id="distribute-btn" class="btn btn-outline-secondary">Auf Mo–Fr verteilen</button>
+                    </div>
+                    <div class="form-text">Setzt Mo–Fr je auf den fünften Teil. Sa/So bleiben unverändert.</div>
+                </div>
+
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Speichern</button>
                     <a href="{% url 'timetracking:job_list' %}" class="btn btn-outline-secondary">Abbrechen</a>
@@ -30,4 +56,31 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    const inputs = Array.from(document.querySelectorAll('.weekday-hours-input'));
+    const sumLabel = document.getElementById('weekly-sum');
+
+    function recalc() {
+        const total = inputs.reduce((acc, el) => acc + (parseFloat(el.value) || 0), 0);
+        sumLabel.textContent = total.toFixed(2);
+    }
+    inputs.forEach(el => el.addEventListener('input', recalc));
+    recalc();
+
+    const distributeBtn = document.getElementById('distribute-btn');
+    const distributeTotal = document.getElementById('distribute-total');
+    distributeBtn.addEventListener('click', function () {
+        const total = parseFloat(distributeTotal.value);
+        if (isNaN(total) || total < 0) return;
+        const per = (total / 5).toFixed(2);
+        ['monday_hours', 'tuesday_hours', 'wednesday_hours', 'thursday_hours', 'friday_hours'].forEach(name => {
+            const el = document.getElementById('id_' + name);
+            if (el) el.value = per;
+        });
+        recalc();
+    });
+})();
+</script>
 {% endblock %}

@@ -7,6 +7,23 @@ from decimal import Decimal
 User = get_user_model()
 
 
+def make_job(user, name="Hauptjob", daily=Decimal("8.00"), work_start_date=None, weekend=Decimal("0")):
+    """Test helper: creates a Job with Mo-Fr = daily, Sa/So = weekend."""
+    from timetracking.models import Job
+    return Job.objects.create(
+        user=user,
+        name=name,
+        work_start_date=work_start_date or date(2026, 1, 1),
+        monday_hours=daily,
+        tuesday_hours=daily,
+        wednesday_hours=daily,
+        thursday_hours=daily,
+        friday_hours=daily,
+        saturday_hours=weekend,
+        sunday_hours=weekend,
+    )
+
+
 class UserProfileSignalTest(TestCase):
     def test_profile_created_on_user_creation(self):
         user = User.objects.create_user(username="testuser", password="pw123456")
@@ -20,58 +37,86 @@ class UserProfileSignalTest(TestCase):
         self.assertEqual(UserProfile.objects.filter(user=user).count(), 1)
 
     def test_job_creation(self):
-        from timetracking.models import Job
         user = User.objects.create_user(username="jobtest", password="pw123456")
-        job = Job.objects.create(
-            user=user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        job = make_job(user, daily=Decimal("8.00"), work_start_date=date(2026, 1, 1))
         self.assertEqual(str(job), "Hauptjob (jobtest)")
         self.assertEqual(job.weekly_target_hours, Decimal("40.00"))
 
     def test_job_unique_name_per_user(self):
-        from timetracking.models import Job
         from django.db import IntegrityError
         user = User.objects.create_user(username="duptest", password="pw123456")
-        Job.objects.create(user=user, name="Hauptjob", weekly_target_hours=Decimal("40.00"), work_start_date=date(2026, 1, 1))
+        make_job(user)
         with self.assertRaises(IntegrityError):
-            Job.objects.create(user=user, name="Hauptjob", weekly_target_hours=Decimal("20.00"), work_start_date=date(2026, 1, 1))
+            make_job(user, daily=Decimal("4.00"))
+
+
+class JobWeekdayHoursTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="weekday", password="pw123456")
+        self.user.userprofile.bundesland = "BY"
+        self.user.userprofile.save()
+
+    def test_weekly_target_hours_property_is_sum(self):
+        from timetracking.models import Job
+        job = Job.objects.create(
+            user=self.user, name="Job1", work_start_date=date(2026, 1, 1),
+            monday_hours=Decimal("9"), tuesday_hours=Decimal("9"),
+            wednesday_hours=Decimal("9"), thursday_hours=Decimal("9"),
+            friday_hours=Decimal("4"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+        )
+        self.assertEqual(job.weekly_target_hours, Decimal("40"))
+
+    def test_hours_for_weekday_index(self):
+        from timetracking.models import Job
+        job = Job.objects.create(
+            user=self.user, name="Job1", work_start_date=date(2026, 1, 1),
+            monday_hours=Decimal("8"), tuesday_hours=Decimal("7"),
+            wednesday_hours=Decimal("6"), thursday_hours=Decimal("5"),
+            friday_hours=Decimal("4"), saturday_hours=Decimal("3"), sunday_hours=Decimal("2"),
+        )
+        self.assertEqual(job.hours_for_weekday(0), Decimal("8"))
+        self.assertEqual(job.hours_for_weekday(4), Decimal("4"))
+        self.assertEqual(job.hours_for_weekday(6), Decimal("2"))
+
+    def test_get_daily_target_holiday_zeros_out(self):
+        from timetracking.utils import get_daily_target
+        job = make_job(self.user, work_start_date=date(2026, 5, 1))
+        # 2026-05-01 = Tag der Arbeit (DE), Friday
+        self.assertEqual(get_daily_target(job, date(2026, 5, 1), "BY"), Decimal("0"))
+        # 2026-05-04 = regular Monday
+        self.assertEqual(get_daily_target(job, date(2026, 5, 4), "BY"), Decimal("8.00"))
+
+    def test_get_daily_target_weekend_when_configured(self):
+        from timetracking.models import Job
+        from timetracking.utils import get_daily_target
+        job = Job.objects.create(
+            user=self.user, name="Schicht", work_start_date=date(2026, 1, 1),
+            monday_hours=Decimal("8"), tuesday_hours=Decimal("8"),
+            wednesday_hours=Decimal("8"), thursday_hours=Decimal("8"),
+            friday_hours=Decimal("0"), saturday_hours=Decimal("4"), sunday_hours=Decimal("0"),
+        )
+        self.assertEqual(get_daily_target(job, date(2026, 5, 2), "BY"), Decimal("4"))  # Sa
+        self.assertEqual(get_daily_target(job, date(2026, 5, 8), "BY"), Decimal("0"))  # Fr
 
 
 class WorkEntryTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="worker", password="pw123456")
-        from timetracking.models import Job
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        self.job = make_job(self.user)
 
     def test_worked_hours_calculation(self):
         from timetracking.models import WorkEntry
         from datetime import time
         entry = WorkEntry.objects.create(
-            user=self.user,
-            job=self.job,
-            date=date(2026, 5, 4),
-            entry_type="work",
-            start_time=time(8, 0),
-            end_time=time(16, 30),
-            break_minutes=30,
+            user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="work",
+            start_time=time(8, 0), end_time=time(16, 30), break_minutes=30,
         )
         self.assertEqual(entry.worked_hours, 8.0)
 
     def test_worked_hours_none_for_absence(self):
         from timetracking.models import WorkEntry
         entry = WorkEntry.objects.create(
-            user=self.user,
-            job=self.job,
-            date=date(2026, 5, 4),
-            entry_type="urlaub",
+            user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="urlaub",
         )
         self.assertIsNone(entry.worked_hours)
 
@@ -88,13 +133,7 @@ class HolidayUtilsTest(TestCase):
         self.user = User.objects.create_user(username="utilsuser", password="pw123456")
         self.user.userprofile.bundesland = "BY"
         self.user.userprofile.save()
-        from timetracking.models import Job
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 5, 4),
-        )
+        self.job = make_job(self.user, work_start_date=date(2026, 5, 4))
 
     def test_may_first_is_holiday_in_bavaria(self):
         from timetracking.utils import is_holiday
@@ -125,39 +164,26 @@ class HolidayUtilsTest(TestCase):
         from timetracking.utils import calculate_total_saldo
         from timetracking.models import WorkEntry
         from datetime import time
-        # Week of May 4-8: 40h soll, worked 9h/day * 5 = 45h
         for day_offset in range(5):
             d = date(2026, 5, 4 + day_offset)
             WorkEntry.objects.create(
-                user=self.user,
-                job=self.job,
-                date=d,
-                entry_type="work",
-                start_time=time(8, 0),
-                end_time=time(17, 0),
-                break_minutes=0,
+                user=self.user, job=self.job, date=d, entry_type="work",
+                start_time=time(8, 0), end_time=time(17, 0), break_minutes=0,
             )
-        # as_of = May 11 (next week Monday): week of May 4 is complete
         saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 11))
-        self.assertEqual(saldo, Decimal("5.00"))  # 45h - 40h = +5h
+        self.assertEqual(saldo, Decimal("5.00"))
 
     def test_weekly_saldo_absence_counts_as_daily_equiv(self):
         from timetracking.utils import calculate_total_saldo
         from timetracking.models import WorkEntry
         for day_offset in range(5):
             d = date(2026, 5, 4 + day_offset)
-            WorkEntry.objects.create(
-                user=self.user,
-                job=self.job,
-                date=d,
-                entry_type="urlaub",
-            )
+            WorkEntry.objects.create(user=self.user, job=self.job, date=d, entry_type="urlaub")
         saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 11))
         self.assertEqual(saldo, Decimal("0.00"))
 
     def test_current_week_no_entries_no_deficit(self):
-        from timetracking.utils import calculate_weekly_saldo
-        from timetracking.utils import get_week_start
+        from timetracking.utils import calculate_weekly_saldo, get_week_start
         today = date.today()
         self.job.work_start_date = get_week_start(today)
         self.job.save()
@@ -166,6 +192,87 @@ class HolidayUtilsTest(TestCase):
             current = next((w for w in weeks if w["is_current"]), None)
             if current:
                 self.assertEqual(current["saldo"], Decimal("0.00"))
+
+
+class PerDayTargetSaldoTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="customday", password="pw123456")
+        self.user.userprofile.bundesland = "BY"
+        self.user.userprofile.save()
+
+    def test_per_day_target_friday_short(self):
+        """Mo-Do 9h, Fr 4h = 40h Woche. Wenn jeden Tag genau Soll gearbeitet, Saldo 0."""
+        from timetracking.models import Job, WorkEntry
+        from timetracking.utils import calculate_total_saldo
+        from datetime import time
+        job = Job.objects.create(
+            user=self.user, name="ShortFriday", work_start_date=date(2026, 5, 4),
+            monday_hours=Decimal("9"), tuesday_hours=Decimal("9"),
+            wednesday_hours=Decimal("9"), thursday_hours=Decimal("9"),
+            friday_hours=Decimal("4"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+        )
+        # Mo-Do je 9h
+        for day_offset in range(4):
+            WorkEntry.objects.create(
+                user=self.user, job=job, date=date(2026, 5, 4 + day_offset),
+                entry_type="work", start_time=time(8, 0), end_time=time(17, 0), break_minutes=0,
+            )
+        # Fr 4h
+        WorkEntry.objects.create(
+            user=self.user, job=job, date=date(2026, 5, 8),
+            entry_type="work", start_time=time(8, 0), end_time=time(12, 0), break_minutes=0,
+        )
+        saldo = calculate_total_saldo(job, "BY", as_of=date(2026, 5, 11))
+        self.assertEqual(saldo, Decimal("0.00"))
+
+    def test_weekend_target_counts_as_workday(self):
+        """Sa 4h konfiguriert, kein Eintrag → Saldo -4h für Wochenende."""
+        from timetracking.models import Job, WorkEntry
+        from timetracking.utils import calculate_total_saldo
+        from datetime import time
+        job = Job.objects.create(
+            user=self.user, name="WithSat", work_start_date=date(2026, 5, 4),
+            monday_hours=Decimal("8"), tuesday_hours=Decimal("8"),
+            wednesday_hours=Decimal("8"), thursday_hours=Decimal("8"),
+            friday_hours=Decimal("8"), saturday_hours=Decimal("4"), sunday_hours=Decimal("0"),
+        )
+        # Mo-Fr voll arbeiten (40h)
+        for day_offset in range(5):
+            WorkEntry.objects.create(
+                user=self.user, job=job, date=date(2026, 5, 4 + day_offset),
+                entry_type="work", start_time=time(8, 0), end_time=time(16, 0),
+                break_minutes=0,
+            )
+        # Sa nicht arbeiten → Wochensoll 44h, Ist 40h → -4h
+        saldo = calculate_total_saldo(job, "BY", as_of=date(2026, 5, 11))
+        self.assertEqual(saldo, Decimal("-4.00"))
+
+    def test_holiday_zeros_out_configured_workday(self):
+        """Feiertag an konfiguriertem Werktag → Soll = 0."""
+        from timetracking.utils import get_daily_target
+        # Christi Himmelfahrt 2026 = Donnerstag 14. Mai (BY)
+        job = make_job(self.user, work_start_date=date(2026, 5, 1))
+        self.assertEqual(get_daily_target(job, date(2026, 5, 14), "BY"), Decimal("0"))
+
+    def test_absence_uses_per_day_target(self):
+        """Urlaub am Tag mit 6h Soll → ist = 6h, nicht durchschnittliches Soll."""
+        from timetracking.models import Job, WorkEntry
+        from timetracking.utils import calculate_weekly_saldo
+        job = Job.objects.create(
+            user=self.user, name="MixedHours", work_start_date=date(2026, 5, 4),
+            monday_hours=Decimal("10"), tuesday_hours=Decimal("10"),
+            wednesday_hours=Decimal("10"), thursday_hours=Decimal("10"),
+            friday_hours=Decimal("6"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+        )
+        # Urlaub am Freitag 2026-05-08
+        WorkEntry.objects.create(
+            user=self.user, job=job, date=date(2026, 5, 8), entry_type="urlaub",
+        )
+        weeks = calculate_weekly_saldo(job, "BY", as_of=date(2026, 5, 11))
+        target_week = next(w for w in weeks if w["week_start"] == date(2026, 5, 4))
+        # Soll = 10+10+10+10+6 = 46h; ist = 6h (Urlaub mit Fr-Soll)
+        self.assertEqual(target_week["soll"], Decimal("46"))
+        self.assertEqual(target_week["ist"], Decimal("6"))
 
 
 class SettingsViewTest(TestCase):
@@ -200,25 +307,16 @@ class FeatureGuardTest(TestCase):
         self.assertRedirects(response, "/timetracking/einstellungen/")
 
 
-
-
-
 class WorkEntryCRUDTest(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username="cruduser", password="pw123456")
         self.client.login(username="cruduser", password="pw123456")
-        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        self.job = make_job(self.user)
         profile.active_job = self.job
         profile.save()
 
@@ -228,12 +326,8 @@ class WorkEntryCRUDTest(TestCase):
 
     def test_entry_create_post_work(self):
         response = self.client.post("/timetracking/eintrag/neu/", {
-            "job": self.job.pk,
-            "date": "2026-05-04",
-            "entry_type": "work",
-            "start_time": "08:00",
-            "end_time": "16:30",
-            "break_minutes": "30",
+            "job": self.job.pk, "date": "2026-05-04", "entry_type": "work",
+            "start_time": "08:00", "end_time": "16:30", "break_minutes": "30",
         })
         self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
         from timetracking.models import WorkEntry
@@ -241,10 +335,7 @@ class WorkEntryCRUDTest(TestCase):
 
     def test_entry_create_post_absence(self):
         response = self.client.post("/timetracking/eintrag/neu/", {
-            "job": self.job.pk,
-            "date": "2026-05-04",
-            "entry_type": "urlaub",
-            "break_minutes": "0",
+            "job": self.job.pk, "date": "2026-05-04", "entry_type": "urlaub", "break_minutes": "0",
         })
         self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
         from timetracking.models import WorkEntry
@@ -266,17 +357,11 @@ class DashboardTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="dashuser", password="pw123456")
         self.client.login(username="dashuser", password="pw123456")
-        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        self.job = make_job(self.user)
         profile.active_job = self.job
         profile.save()
 
@@ -301,17 +386,11 @@ class MonthDetailTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="monthuser", password="pw123456")
         self.client.login(username="monthuser", password="pw123456")
-        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        self.job = make_job(self.user)
         profile.active_job = self.job
         profile.save()
 
@@ -338,13 +417,7 @@ class JobCRUDTest(TestCase):
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        from timetracking.models import Job
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 1, 1),
-        )
+        self.job = make_job(self.user)
         profile.active_job = self.job
         profile.save()
 
@@ -356,37 +429,31 @@ class JobCRUDTest(TestCase):
     def test_job_create(self):
         response = self.client.post("/timetracking/jobs/neu/", {
             "name": "Nebenjob",
-            "weekly_target_hours": "20.00",
             "work_start_date": "2026-03-01",
+            "monday_hours": "4", "tuesday_hours": "4", "wednesday_hours": "4",
+            "thursday_hours": "4", "friday_hours": "4",
+            "saturday_hours": "0", "sunday_hours": "0",
         })
         self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
         from timetracking.models import Job
         self.assertEqual(Job.objects.filter(user=self.user).count(), 2)
 
     def test_job_activate(self):
-        from timetracking.models import Job
-        job2 = Job.objects.create(
-            user=self.user, name="Nebenjob",
-            weekly_target_hours=Decimal("20.00"), work_start_date=date(2026, 3, 1)
-        )
+        job2 = make_job(self.user, name="Nebenjob", daily=Decimal("4"), work_start_date=date(2026, 3, 1))
         response = self.client.post(f"/timetracking/jobs/{job2.pk}/aktivieren/")
         self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
         self.user.userprofile.refresh_from_db()
         self.assertEqual(self.user.userprofile.active_job, job2)
 
     def test_job_delete_blocked_with_entries(self):
-        from timetracking.models import WorkEntry
+        from timetracking.models import WorkEntry, Job
         WorkEntry.objects.create(user=self.user, job=self.job, date=date(2026, 5, 4), entry_type="urlaub")
         response = self.client.post(f"/timetracking/jobs/{self.job.pk}/loeschen/")
-        from timetracking.models import Job
         self.assertEqual(Job.objects.filter(user=self.user).count(), 1)
 
     def test_job_delete_allowed_without_entries(self):
         from timetracking.models import Job
-        job2 = Job.objects.create(
-            user=self.user, name="Leerjob",
-            weekly_target_hours=Decimal("10.00"), work_start_date=date(2026, 5, 1)
-        )
+        job2 = make_job(self.user, name="Leerjob", daily=Decimal("2"), work_start_date=date(2026, 5, 1))
         response = self.client.post(f"/timetracking/jobs/{job2.pk}/loeschen/")
         self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
         self.assertEqual(Job.objects.filter(user=self.user, name="Leerjob").count(), 0)
@@ -397,17 +464,11 @@ class ReportViewTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="reportuser", password="pw123456")
         self.client.login(username="reportuser", password="pw123456")
-        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        self.job = Job.objects.create(
-            user=self.user,
-            name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"),
-            work_start_date=date(2026, 5, 1),
-        )
+        self.job = make_job(self.user, work_start_date=date(2026, 5, 1))
         profile.active_job = self.job
         profile.save()
 
@@ -433,15 +494,11 @@ class ReportPDFTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username="pdfuser", password="pw123456", email="test@example.com")
         self.client.login(username="pdfuser", password="pw123456")
-        from timetracking.models import Job
         profile = self.user.userprofile
         profile.timetracking_enabled = True
         profile.bundesland = "BY"
         profile.save()
-        job = Job.objects.create(
-            user=self.user, name="Hauptjob",
-            weekly_target_hours=Decimal("40.00"), work_start_date=date(2026, 5, 1)
-        )
+        job = make_job(self.user, work_start_date=date(2026, 5, 1))
         profile.active_job = job
         profile.save()
 

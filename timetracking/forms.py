@@ -5,16 +5,32 @@ from .models import Job, UserProfile, WorkEntry
 class JobForm(forms.ModelForm):
     class Meta:
         model = Job
-        fields = ["name", "weekly_target_hours", "work_start_date"]
+        fields = [
+            "name", "work_start_date",
+            "monday_hours", "tuesday_hours", "wednesday_hours",
+            "thursday_hours", "friday_hours", "saturday_hours", "sunday_hours",
+        ]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
-            "weekly_target_hours": forms.NumberInput(attrs={"class": "form-control", "step": "0.5"}),
             "work_start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
+            **{
+                f: forms.NumberInput(attrs={
+                    "class": "form-control weekday-hours-input",
+                    "step": "0.25", "min": "0", "max": "24",
+                })
+                for f in Job._WEEKDAY_FIELDS
+            },
         }
         labels = {
             "name": "Bezeichnung",
-            "weekly_target_hours": "Wochensoll (Stunden)",
             "work_start_date": "Startdatum für Saldo",
+            "monday_hours": "Montag",
+            "tuesday_hours": "Dienstag",
+            "wednesday_hours": "Mittwoch",
+            "thursday_hours": "Donnerstag",
+            "friday_hours": "Freitag",
+            "saturday_hours": "Samstag",
+            "sunday_hours": "Sonntag",
         }
 
 

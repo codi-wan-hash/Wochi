@@ -27,6 +27,17 @@ def get_soll_days_in_range(start: date, end: date, bundesland: str) -> list:
     return days
 
 
+def get_daily_target(job, d: date, bundesland: str) -> Decimal:
+    """Per-day Soll for a job. Holidays return 0 regardless of weekday config."""
+    if is_holiday(d, bundesland):
+        return Decimal("0")
+    return job.hours_for_weekday(d.weekday())
+
+
+def has_target(job, d: date, bundesland: str) -> bool:
+    return get_daily_target(job, d, bundesland) > 0
+
+
 def get_week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
@@ -41,6 +52,7 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
     """
     Returns list of weekly saldo dicts from job.work_start_date through as_of.
     Each dict: week_start, week_end, iso_week, year, soll, ist, saldo, is_current.
+    Soll = sum of per-weekday target hours (holidays zero out the day).
     """
     if not job.work_start_date:
         return []
@@ -53,7 +65,7 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
 
     from timetracking.models import WorkEntry
 
-    current_week_start = get_week_start(date.today())
+    current_week_start = get_week_start(as_of)
     weeks = []
     week_start = get_week_start(job.work_start_date)
 
@@ -62,12 +74,11 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
         effective_start = max(week_start, job.work_start_date)
         effective_end = min(week_end, as_of)
 
-        # Soll = effektive Werktage × Tagesäquivalent (Wochensoll / 5).
-        # Feiertage/Wochenenden reduzieren das Soll, ohne dass die übrigen
-        # Tage "aufgepumpt" werden.
-        daily_equiv = job.weekly_target_hours / Decimal("5")
-        eff_soll = len(get_soll_days_in_range(effective_start, effective_end, bundesland))
-        week_soll = daily_equiv * Decimal(eff_soll)
+        week_soll = Decimal("0")
+        d = effective_start
+        while d <= effective_end:
+            week_soll += get_daily_target(job, d, bundesland)
+            d += timedelta(days=1)
 
         entries = WorkEntry.objects.filter(job=job, date__range=[effective_start, effective_end])
 
@@ -77,11 +88,10 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
                 if entry.worked_hours is not None:
                     week_ist += Decimal(str(entry.worked_hours))
             else:
-                week_ist += daily_equiv
+                week_ist += get_daily_target(job, entry.date, bundesland)
 
         is_current = week_start == current_week_start
 
-        # Current week without entries: no deficit yet
         if is_current and not entries.exists():
             week_soll = Decimal("0")
 

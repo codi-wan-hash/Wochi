@@ -30,8 +30,20 @@ class Job(models.Model):
         related_name="jobs",
     )
     name = models.CharField(max_length=100)
-    weekly_target_hours = models.DecimalField(max_digits=5, decimal_places=2)
     work_start_date = models.DateField()
+
+    monday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    tuesday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    wednesday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    thursday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    friday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    saturday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+    sunday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
+
+    _WEEKDAY_FIELDS = [
+        "monday_hours", "tuesday_hours", "wednesday_hours", "thursday_hours",
+        "friday_hours", "saturday_hours", "sunday_hours",
+    ]
 
     class Meta:
         unique_together = ("user", "name")
@@ -39,6 +51,13 @@ class Job(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.user.username})"
+
+    def hours_for_weekday(self, weekday: int) -> Decimal:
+        return getattr(self, self._WEEKDAY_FIELDS[weekday])
+
+    @property
+    def weekly_target_hours(self) -> Decimal:
+        return sum((self.hours_for_weekday(i) for i in range(7)), Decimal("0"))
 
 
 class UserProfile(models.Model):
