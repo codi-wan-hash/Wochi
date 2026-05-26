@@ -576,3 +576,26 @@ def recipe_apply_suggestion(request, pk):
         return JsonResponse({"success": True})
 
     return JsonResponse({"error": "POST required"}, status=405)
+
+
+@login_required
+def ai_generator_form(request):
+    household = get_current_household(request.user)
+    if not household:
+        return redirect("choose_household")
+    from .utils import get_ingredient_autocomplete
+    return render(request, "meals/ai_generator.html", {
+        "household": household,
+        "autocomplete": get_ingredient_autocomplete(household),
+        "default_portions": max(household.members.count(), 2),
+    })
+
+
+@login_required
+def ai_generator_suggest(request):
+    return JsonResponse({"error": "not implemented yet"}, status=501)
+
+
+@login_required
+def ai_generator_save(request):
+    return JsonResponse({"error": "not implemented yet"}, status=501)

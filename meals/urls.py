@@ -21,6 +21,9 @@ from .views import (
     recipe_apply_suggestion,
     recipe_generate_image,
     recipe_upload_image,
+    ai_generator_form,
+    ai_generator_suggest,
+    ai_generator_save,
 )
 
 urlpatterns = [
@@ -46,4 +49,7 @@ urlpatterns = [
     path("recipes/<int:pk>/apply-suggestion/", recipe_apply_suggestion, name="recipe_apply_suggestion"),
     path("recipes/<int:pk>/generate-image/", recipe_generate_image, name="recipe_generate_image"),
     path("recipes/<int:pk>/upload-image/", recipe_upload_image, name="recipe_upload_image"),
+    path("ai-generator/", ai_generator_form, name="ai_generator_form"),
+    path("ai-generator/suggest/", ai_generator_suggest, name="ai_generator_suggest"),
+    path("ai-generator/save/", ai_generator_save, name="ai_generator_save"),
 ]
