@@ -82,3 +82,4 @@ class AIGeneratorFormTest(TestCase):
         self.household.members.clear()
         response = self.client.get("/meals/ai-generator/")
         self.assertEqual(response.status_code, 302)
+        self.assertIn("/households/choose/", response["Location"])
