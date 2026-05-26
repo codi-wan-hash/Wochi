@@ -9,10 +9,12 @@ class JobForm(forms.ModelForm):
             "name", "work_start_date",
             "monday_hours", "tuesday_hours", "wednesday_hours",
             "thursday_hours", "friday_hours", "saturday_hours", "sunday_hours",
+            "holiday_credit_basis",
         ]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "work_start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
+            "holiday_credit_basis": forms.Select(attrs={"class": "form-select"}),
             **{
                 f: forms.NumberInput(attrs={
                     "class": "form-control weekday-hours-input",
@@ -31,6 +33,7 @@ class JobForm(forms.ModelForm):
             "friday_hours": "Freitag",
             "saturday_hours": "Samstag",
             "sunday_hours": "Sonntag",
+            "holiday_credit_basis": "Feiertagsentlastung berechnen nach",
         }
 
 

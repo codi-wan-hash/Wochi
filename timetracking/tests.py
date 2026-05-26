@@ -275,6 +275,96 @@ class PerDayTargetSaldoTest(TestCase):
         self.assertEqual(target_week["ist"], Decimal("6"))
 
 
+class HolidayCreditBasisTest(TestCase):
+    """Holiday credit basis: per_day (default) vs weekly_average."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="holcredit", password="pw123456")
+        self.user.userprofile.bundesland = "BY"
+        self.user.userprofile.save()
+
+    def _make_unequal_job(self, basis="per_day", work_start_date=None):
+        """Mo–Do = 8.5h, Fr = 6h → 40h Woche, Avg = 8h."""
+        from timetracking.models import Job
+        return Job.objects.create(
+            user=self.user, name="Vertrag",
+            work_start_date=work_start_date or date(2026, 5, 1),
+            monday_hours=Decimal("8.5"), tuesday_hours=Decimal("8.5"),
+            wednesday_hours=Decimal("8.5"), thursday_hours=Decimal("8.5"),
+            friday_hours=Decimal("6"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+            holiday_credit_basis=basis,
+        )
+
+    def test_holiday_credit_per_day_default(self):
+        from timetracking.utils import get_daily_target
+        job = self._make_unequal_job(basis="per_day")
+        # 2026-05-25 = Pfingstmontag (BY), config Mo = 8.5
+        self.assertEqual(get_daily_target(job, date(2026, 5, 25), "BY"), Decimal("0"))
+        # 2026-05-01 = Tag der Arbeit, Friday, config Fr = 6
+        self.assertEqual(get_daily_target(job, date(2026, 5, 1), "BY"), Decimal("0"))
+
+    def test_holiday_credit_weekly_average_heavy_day(self):
+        from timetracking.utils import get_daily_target, calculate_weekly_saldo
+        job = self._make_unequal_job(basis="weekly_average")
+        # 2026-05-25 Pfingstmontag (BY), Mo config 8.5, avg 8 → 8.5 − 8 = 0.5
+        self.assertEqual(get_daily_target(job, date(2026, 5, 25), "BY"), Decimal("0.5"))
+        # Wochensumme der Pfingst-Woche (Mo 25.5. – So 31.5.2026): kein weiterer Feiertag.
+        # Soll: Mo 0.5 + Di+Mi+Do je 8.5 + Fr 6 + Sa+So 0 = 0.5+25.5+6 = 32
+        weeks = calculate_weekly_saldo(job, "BY", as_of=date(2026, 6, 1))
+        target_week = next(w for w in weeks if w["week_start"] == date(2026, 5, 25))
+        self.assertEqual(target_week["soll"], Decimal("32.0"))
+
+    def test_holiday_credit_weekly_average_light_day(self):
+        from timetracking.utils import get_daily_target, calculate_weekly_saldo
+        # work_start_date vor April 27, damit volle Woche zählt
+        job = self._make_unequal_job(basis="weekly_average", work_start_date=date(2026, 4, 1))
+        # 2026-05-01 Tag der Arbeit, Fr config 6, avg 8 → 6 − 8 = −2
+        self.assertEqual(get_daily_target(job, date(2026, 5, 1), "BY"), Decimal("-2"))
+        # Wochensumme der Woche 27.4.–3.5.2026:
+        # Mo–Do je 8.5 (kein Feiertag) = 34, Fr (Feiertag) = −2, Sa+So 0 → 32
+        weeks = calculate_weekly_saldo(job, "BY", as_of=date(2026, 5, 4))
+        target_week = next(w for w in weeks if w["week_start"] == date(2026, 4, 27))
+        self.assertEqual(target_week["soll"], Decimal("32.0"))
+
+    def test_holiday_credit_weekly_average_non_workday_config(self):
+        """Mode weekly_average aber Wochentag mit config=0 → kein Effekt."""
+        from timetracking.models import Job
+        from timetracking.utils import get_daily_target
+        # User arbeitet nicht montags (config Mo = 0)
+        job = Job.objects.create(
+            user=self.user, name="OhneMo", work_start_date=date(2026, 5, 1),
+            monday_hours=Decimal("0"), tuesday_hours=Decimal("10"),
+            wednesday_hours=Decimal("10"), thursday_hours=Decimal("10"),
+            friday_hours=Decimal("10"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+            holiday_credit_basis="weekly_average",
+        )
+        # 2026-05-25 Pfingstmontag, config Mo = 0 → keine Entlastung, returns 0
+        self.assertEqual(get_daily_target(job, date(2026, 5, 25), "BY"), Decimal("0"))
+
+    def test_holiday_credit_basis_form_choice_saved(self):
+        from django.contrib.auth import get_user_model
+        from timetracking.models import Job
+        U = get_user_model()
+        u = U.objects.create_user(username="formuser", password="pw123456")
+        profile = u.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        client = Client()
+        client.login(username="formuser", password="pw123456")
+        response = client.post("/timetracking/jobs/neu/", {
+            "name": "Job1",
+            "work_start_date": "2026-01-01",
+            "monday_hours": "8", "tuesday_hours": "8", "wednesday_hours": "8",
+            "thursday_hours": "8", "friday_hours": "8",
+            "saturday_hours": "0", "sunday_hours": "0",
+            "holiday_credit_basis": "weekly_average",
+        })
+        self.assertIn(response.status_code, (200, 302))
+        job = Job.objects.get(user=u, name="Job1")
+        self.assertEqual(job.holiday_credit_basis, "weekly_average")
+
+
 class SettingsViewTest(TestCase):
     def setUp(self):
         self.client = Client()
@@ -433,6 +523,7 @@ class JobCRUDTest(TestCase):
             "monday_hours": "4", "tuesday_hours": "4", "wednesday_hours": "4",
             "thursday_hours": "4", "friday_hours": "4",
             "saturday_hours": "0", "sunday_hours": "0",
+            "holiday_credit_basis": "per_day",
         })
         self.assertRedirects(response, "/timetracking/jobs/", fetch_redirect_response=False)
         from timetracking.models import Job

@@ -3,6 +3,11 @@ from decimal import Decimal
 from django.db import models
 from django.conf import settings
 
+HOLIDAY_CREDIT_BASIS_CHOICES = [
+    ("per_day", "Nach Tageseingabe"),
+    ("weekly_average", "Wochendurchschnitt"),
+]
+
 BUNDESLAND_CHOICES = [
     ("BB", "Brandenburg"),
     ("BE", "Berlin"),
@@ -40,6 +45,12 @@ class Job(models.Model):
     saturday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
     sunday_hours = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
 
+    holiday_credit_basis = models.CharField(
+        max_length=20,
+        choices=HOLIDAY_CREDIT_BASIS_CHOICES,
+        default="per_day",
+    )
+
     _WEEKDAY_FIELDS = [
         "monday_hours", "tuesday_hours", "wednesday_hours", "thursday_hours",
         "friday_hours", "saturday_hours", "sunday_hours",
@@ -58,6 +69,15 @@ class Job(models.Model):
     @property
     def weekly_target_hours(self) -> Decimal:
         return sum((self.hours_for_weekday(i) for i in range(7)), Decimal("0"))
+
+    @property
+    def configured_workday_count(self) -> int:
+        return sum(1 for f in self._WEEKDAY_FIELDS if getattr(self, f) > 0)
+
+    @property
+    def weekly_average_hours(self) -> Decimal:
+        n = self.configured_workday_count
+        return (self.weekly_target_hours / n) if n else Decimal("0")
 
 
 class UserProfile(models.Model):

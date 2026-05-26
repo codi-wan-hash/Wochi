@@ -28,10 +28,21 @@ def get_soll_days_in_range(start: date, end: date, bundesland: str) -> list:
 
 
 def get_daily_target(job, d: date, bundesland: str) -> Decimal:
-    """Per-day Soll for a job. Holidays return 0 regardless of weekday config."""
-    if is_holiday(d, bundesland):
-        return Decimal("0")
-    return job.hours_for_weekday(d.weekday())
+    """
+    Per-day Soll for a job.
+
+    Non-holiday: configured hours for that weekday.
+    Holiday: depends on job.holiday_credit_basis —
+      - "per_day": 0 (full relief equals configured hours).
+      - "weekly_average": config − weekly_avg (relief always equals the weekly
+        average regardless of which weekday the holiday falls on).
+    """
+    config = job.hours_for_weekday(d.weekday())
+    if not is_holiday(d, bundesland):
+        return config
+    if job.holiday_credit_basis == "weekly_average" and config > 0:
+        return config - job.weekly_average_hours
+    return Decimal("0")
 
 
 def has_target(job, d: date, bundesland: str) -> bool:

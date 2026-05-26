@@ -39,6 +39,16 @@
                     {% endfor %}
                 </div>
 
+                <div class="mb-3">
+                    <label for="{{ form.holiday_credit_basis.id_for_label }}" class="form-label">{{ form.holiday_credit_basis.label }}</label>
+                    {{ form.holiday_credit_basis }}
+                    <div class="form-text">
+                        <strong>Tageseingabe:</strong> Feiertag entlastet um die für diesen Wochentag konfigurierten Stunden (z. B. 8,5 h am Montag).<br>
+                        <strong>Wochendurchschnitt:</strong> jeder Feiertag entlastet pauschal um den Wochenmittelwert (Wochenstunden ÷ Anzahl konfigurierter Werktage). Fair bei ungleich verteilten Wochenstunden.
+                    </div>
+                    {% if form.holiday_credit_basis.errors %}<div class="invalid-feedback d-block">{{ form.holiday_credit_basis.errors }}</div>{% endif %}
+                </div>
+
                 <div class="bg-light rounded p-3 mb-3">
                     <label for="distribute-total" class="form-label small mb-1">Schnellverteilung: Gesamt-Wochenstunden gleichmäßig auf Mo–Fr verteilen</label>
                     <div class="input-group input-group-sm" style="max-width:360px">
