@@ -488,31 +488,34 @@ Antworte ausschließlich mit folgendem JSON:
 def _generate_and_store_recipe_image(recipe):
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     response = client.images.generate(
-        model="dall-e-3",
+        model="gpt-image-1",
         prompt=(
             f"Professional food photography of '{recipe.title}', restaurant quality dish, "
             "warm natural lighting, overhead shot on a wooden table, minimal props, "
             "clean background, appetizing presentation"
         ),
         size="1024x1024",
-        quality="standard",
+        quality="medium",
         n=1,
     )
-    dalle_url = response.data[0].url
+    # gpt-image-1 returns base64-encoded image data, not a URL.
+    b64_data = response.data[0].b64_json
+    data_uri = f"data:image/png;base64,{b64_data}"
 
     cloudinary_url = getattr(settings, "CLOUDINARY_URL", "")
-    if cloudinary_url:
-        import cloudinary.uploader
-        result = cloudinary.uploader.upload(
-            dalle_url,
-            folder="wochi/recipes",
-            public_id=f"recipe_{recipe.pk}",
-            overwrite=True,
+    if not cloudinary_url:
+        raise RuntimeError(
+            "Bildgenerierung benötigt Cloudinary (CLOUDINARY_URL nicht konfiguriert)."
         )
-        recipe.image = result["secure_url"]
-    else:
-        recipe.image = dalle_url
 
+    import cloudinary.uploader
+    result = cloudinary.uploader.upload(
+        data_uri,
+        folder="wochi/recipes",
+        public_id=f"recipe_{recipe.pk}",
+        overwrite=True,
+    )
+    recipe.image = result["secure_url"]
     recipe.save(update_fields=["image"])
 
 
