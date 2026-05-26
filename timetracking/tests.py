@@ -341,6 +341,22 @@ class HolidayCreditBasisTest(TestCase):
         # 2026-05-25 Pfingstmontag, config Mo = 0 → keine Entlastung, returns 0
         self.assertEqual(get_daily_target(job, date(2026, 5, 25), "BY"), Decimal("0"))
 
+    def test_holiday_before_work_start_date_returns_zero(self):
+        """Pre-work_start_date Feiertag darf nicht im Monatssaldo zählen."""
+        from timetracking.models import Job
+        from timetracking.utils import get_daily_target
+        job = Job.objects.create(
+            user=self.user, name="StartMidMonth", work_start_date=date(2026, 5, 4),
+            monday_hours=Decimal("8.5"), tuesday_hours=Decimal("8.5"),
+            wednesday_hours=Decimal("8.5"), thursday_hours=Decimal("8.5"),
+            friday_hours=Decimal("6"), saturday_hours=Decimal("0"), sunday_hours=Decimal("0"),
+            holiday_credit_basis="weekly_average",
+        )
+        # 2026-05-01 Tag der Arbeit (Fr Feiertag), aber vor work_start_date → 0
+        self.assertEqual(get_daily_target(job, date(2026, 5, 1), "BY"), Decimal("0"))
+        # Regulärer Mo 2026-05-04 (work_start) → config 8.5
+        self.assertEqual(get_daily_target(job, date(2026, 5, 4), "BY"), Decimal("8.5"))
+
     def test_holiday_credit_basis_form_choice_saved(self):
         from django.contrib.auth import get_user_model
         from timetracking.models import Job
