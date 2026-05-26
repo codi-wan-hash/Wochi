@@ -231,3 +231,13 @@ class AIGeneratorSaveTest(TestCase):
         response = self._post(self._payload())
         recipe = Recipe.objects.get(pk=response.json()["recipe_id"])
         self.assertEqual(recipe.title, "Hähnchen-Reis-Pfanne (3)")
+
+    def test_save_unique_title_loop_terminates(self):
+        # Pre-fill 5 collisions; 6th save should succeed at (6)
+        Recipe.objects.create(household=self.household, title="Hähnchen-Reis-Pfanne", created_by=self.user)
+        for n in range(2, 6):
+            Recipe.objects.create(household=self.household, title=f"Hähnchen-Reis-Pfanne ({n})", created_by=self.user)
+        response = self._post(self._payload())
+        self.assertEqual(response.status_code, 200)
+        recipe = Recipe.objects.get(pk=response.json()["recipe_id"])
+        self.assertEqual(recipe.title, "Hähnchen-Reis-Pfanne (6)")

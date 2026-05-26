@@ -4,6 +4,7 @@ from datetime import timedelta, datetime
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
@@ -703,19 +704,25 @@ def ai_generator_save(request):
     notes_bits.append("per AI generiert")
     notes = " · ".join(notes_bits)
 
+    MAX_TITLE_COLLISION_ATTEMPTS = 100
     final_title = title
-    counter = 2
-    while Recipe.objects.filter(household=household, title=final_title).exists():
-        final_title = f"{title} ({counter})"
-        counter += 1
-
-    recipe = Recipe.objects.create(
-        household=household,
-        title=final_title,
-        notes=notes,
-        instructions=instructions,
-        created_by=request.user,
-    )
+    recipe = None
+    for attempt in range(MAX_TITLE_COLLISION_ATTEMPTS):
+        try:
+            with transaction.atomic():
+                recipe = Recipe.objects.create(
+                    household=household,
+                    title=final_title,
+                    notes=notes,
+                    instructions=instructions,
+                    created_by=request.user,
+                )
+            break
+        except IntegrityError:
+            # title already taken (race or sequential collision) — bump suffix
+            final_title = f"{title} ({attempt + 2})"
+    if recipe is None:
+        return JsonResponse({"error": "Konnte keinen eindeutigen Titel finden."}, status=409)
 
     ingredients_payload = payload.get("ingredients") or []
     Ingredient.objects.bulk_create([
