@@ -28,8 +28,9 @@
     <div class="offcanvas-body">
         <nav class="sidebar-nav">
             <a href="{% url 'task_list' %}" class="{% if '/tasks/' in request.path %}active{% endif %}">Aufgaben</a>
-            <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path %}active{% endif %}">Essensplanung</a>
+            <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path and not '/meals/ai-generator/' in request.path %}active{% endif %}">Essensplanung</a>
             <a href="{% url 'recipe_list' %}" class="{% if '/meals/recipes/' in request.path %}active{% endif %}">Gerichte</a>
+            <a href="{% url 'ai_generator_form' %}" class="{% if '/meals/ai-generator/' in request.path %}active{% endif %}">Rezept-AI 🍳</a>
             <a href="{% url 'shopping_list' %}" class="{% if '/shopping/' in request.path %}active{% endif %}">Einkaufsliste</a>
             {% if user.userprofile.timetracking_enabled %}
             <a href="{% url 'timetracking:dashboard' %}" class="{% if '/timetracking/' in request.path %}active{% endif %}">Arbeitszeit</a>
@@ -53,8 +54,9 @@
     <a href="{% url 'home' %}" class="sidebar-brand">Wochii</a>
     <nav class="sidebar-nav">
         <a href="{% url 'task_list' %}" class="{% if '/tasks/' in request.path %}active{% endif %}">Aufgaben</a>
-        <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path %}active{% endif %}">Essensplanung</a>
+        <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path and not '/meals/ai-generator/' in request.path %}active{% endif %}">Essensplanung</a>
         <a href="{% url 'recipe_list' %}" class="{% if '/meals/recipes/' in request.path %}active{% endif %}">Gerichte</a>
+        <a href="{% url 'ai_generator_form' %}" class="{% if '/meals/ai-generator/' in request.path %}active{% endif %}">Rezept-AI 🍳</a>
         <a href="{% url 'shopping_list' %}" class="{% if '/shopping/' in request.path %}active{% endif %}">Einkaufsliste</a>
         {% if user.userprofile.timetracking_enabled %}
         <a href="{% url 'timetracking:dashboard' %}" class="{% if '/timetracking/' in request.path %}active{% endif %}">Arbeitszeit</a>
