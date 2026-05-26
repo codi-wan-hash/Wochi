@@ -8,15 +8,15 @@ from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
 
-try:
-    from openai import OpenAI  # exposed at module-level for test patching
-except ImportError:  # pragma: no cover
-    OpenAI = None
+from openai import OpenAI, RateLimitError
 
 from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions, merge_quantities, parse_quantity, _format_qty
 from shopping.models import ShoppingItem
 from .models import MealPlan, Recipe, Ingredient
 from .forms import MealPlanForm, RecipeForm, IngredientForm
+
+MAX_INGREDIENTS = 30
+MAX_PORTIONS = 50
 
 
 def get_week_dates():
@@ -456,11 +456,7 @@ def recipe_ai_suggest(request, pk):
     if not api_key:
         return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert. Bitte OPENAI_API_KEY als Umgebungsvariable setzen."}, status=503)
 
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key)
-
-        prompt = f"""Du bist ein Kochassistent. Erstelle genau 3 verschiedene Rezeptvarianten für das Gericht "{recipe.title}".
+    prompt = f"""Du bist ein Kochassistent. Erstelle genau 3 verschiedene Rezeptvarianten für das Gericht "{recipe.title}".
 Antworte ausschließlich mit folgendem JSON:
 {{
   "suggestions": [
@@ -472,6 +468,8 @@ Antworte ausschließlich mit folgendem JSON:
   ]
 }}"""
 
+    try:
+        client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -480,15 +478,13 @@ Antworte ausschließlich mit folgendem JSON:
         )
         data = json.loads(response.choices[0].message.content)
         return JsonResponse(data)
+    except RateLimitError:
+        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
     except Exception as e:
-        from openai import RateLimitError
-        if isinstance(e, RateLimitError):
-            return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
         return JsonResponse({"error": str(e)}, status=500)
 
 
 def _generate_and_store_recipe_image(recipe):
-    from openai import OpenAI
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     response = client.images.generate(
         model="dall-e-3",
@@ -609,7 +605,7 @@ def ai_generator_suggest(request):
     ingredients = [str(x).strip() for x in (payload.get("ingredients") or []) if str(x).strip()]
     if not ingredients:
         return JsonResponse({"error": "Mindestens 1 Zutat angeben."}, status=400)
-    if len(ingredients) > 30:
+    if len(ingredients) > MAX_INGREDIENTS:
         return JsonResponse({"error": "Maximal 30 Zutaten."}, status=400)
 
     try:
@@ -617,7 +613,7 @@ def ai_generator_suggest(request):
         portions = int(raw_portions if raw_portions is not None else 2)
     except (TypeError, ValueError):
         return JsonResponse({"error": "Portionen müssen eine Zahl sein."}, status=400)
-    if not (1 <= portions <= 50):
+    if not (1 <= portions <= MAX_PORTIONS):
         return JsonResponse({"error": "Portionen müssen zwischen 1 und 50 liegen."}, status=400)
 
     filters = [str(f).strip().lower() for f in (payload.get("filters") or []) if str(f).strip()]
@@ -660,15 +656,16 @@ def ai_generator_suggest(request):
             response_format={"type": "json_object"},
             temperature=0.7,
         )
-        data = json.loads(response.choices[0].message.content)
+        raw = response.choices[0].message.content
+    except RateLimitError:
+        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
     except Exception as e:
-        try:
-            from openai import RateLimitError
-            if isinstance(e, RateLimitError):
-                return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
-        except ImportError:
-            pass
         return JsonResponse({"error": str(e)}, status=500)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
 
     suggestions = data.get("suggestions") or []
     if len(suggestions) != 3:

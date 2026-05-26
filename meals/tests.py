@@ -87,6 +87,7 @@ class AIGeneratorFormTest(TestCase):
 
 from unittest.mock import patch, MagicMock
 import json
+from django.test import override_settings
 
 
 class AIGeneratorSuggestTest(TestCase):
@@ -125,16 +126,14 @@ class AIGeneratorSuggestTest(TestCase):
         response = self._post(ingredients=["a"], portions=51, filters=[])
         self.assertEqual(response.status_code, 400)
 
-    @patch("meals.views.settings")
-    def test_suggest_missing_api_key_returns_503(self, mock_settings):
-        mock_settings.OPENAI_API_KEY = ""
+    @override_settings(OPENAI_API_KEY="")
+    def test_suggest_missing_api_key_returns_503(self):
         response = self._post(ingredients=["reis"], portions=2, filters=[])
         self.assertEqual(response.status_code, 503)
 
+    @override_settings(OPENAI_API_KEY="test-key")
     @patch("meals.views.OpenAI")
-    @patch("meals.views.settings")
-    def test_suggest_happy_path_returns_three(self, mock_settings, mock_openai_cls):
-        mock_settings.OPENAI_API_KEY = "test-key"
+    def test_suggest_happy_path_returns_three(self, mock_openai_cls):
         fake_payload = {
             "suggestions": [
                 {"title": f"R{i}", "duration_min": 20, "ingredients": [{"name": "Reis", "quantity": "200g"}], "instructions": "1. ..."}
@@ -153,10 +152,9 @@ class AIGeneratorSuggestTest(TestCase):
         self.assertEqual(len(data["suggestions"]), 3)
         self.assertEqual(data["suggestions"][0]["title"], "R0")
 
+    @override_settings(OPENAI_API_KEY="test-key")
     @patch("meals.views.OpenAI")
-    @patch("meals.views.settings")
-    def test_suggest_rejects_malformed_ai_response(self, mock_settings, mock_openai_cls):
-        mock_settings.OPENAI_API_KEY = "test-key"
+    def test_suggest_rejects_malformed_ai_response(self, mock_openai_cls):
         mock_choice = MagicMock()
         mock_choice.message.content = json.dumps({"suggestions": [{"title": "only-one"}]})
         mock_response = MagicMock()
