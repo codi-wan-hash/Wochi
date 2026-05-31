@@ -78,13 +78,13 @@
                         {% else %}–{% endif %}
                     </td>
                     <td class="text-end">
-                        {% if d.entry or not d.is_weekend and not d.holiday_name %}{{ d.ist|floatformat:2 }}h{% endif %}
+                        {% if d.show_values %}{{ d.ist|floatformat:2 }}h{% endif %}
                     </td>
                     <td class="text-end">
-                        {% if not d.is_weekend and not d.holiday_name %}{{ d.soll|floatformat:2 }}h{% endif %}
+                        {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% endif %}
                     </td>
-                    <td class="text-end {% if d.entry or not d.is_weekend and not d.holiday_name %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
-                        {% if d.entry or not d.is_weekend and not d.holiday_name %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
+                    <td class="text-end {% if d.show_values %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                        {% if d.show_values %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
                     </td>
                     <td>
                         {% if d.entry %}

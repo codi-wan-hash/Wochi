@@ -252,6 +252,8 @@ def month_detail(request, year, month):
             "entry": entry,
             "holiday_name": holiday_name,
             "is_weekend": is_weekend,
+            "is_soll": is_soll,
+            "show_values": is_soll or entry is not None,
             "soll": soll,
             "ist": ist,
             "diff": ist - soll,
