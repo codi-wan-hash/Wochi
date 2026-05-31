@@ -453,3 +453,85 @@ class ReportPDFTest(TestCase):
     def test_email_redirects_after_send(self):
         response = self.client.post("/timetracking/bericht/2026/5/email/")
         self.assertRedirects(response, "/timetracking/bericht/2026/5/", fetch_redirect_response=False)
+
+
+class WeekendHolidayFormValidationTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="formtest", password="pw123456")
+        profile = self.user.userprofile
+        profile.bundesland = "BY"
+        profile.save()
+        from timetracking.models import Job
+        self.job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+
+    def _form(self, data):
+        from timetracking.forms import WorkEntryForm
+        return WorkEntryForm(data=data, user=self.user, bundesland="BY")
+
+    def test_work_entry_on_saturday_is_valid(self):
+        # 2026-05-30 ist ein Samstag
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-30",
+            "entry_type": "work",
+            "start_time": "10:00",
+            "end_time": "14:00",
+            "break_minutes": "0",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_work_entry_on_bavarian_holiday_is_valid(self):
+        # 2026-05-01 (Tag der Arbeit) ist Feiertag in BY
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-01",
+            "entry_type": "work",
+            "start_time": "09:00",
+            "end_time": "13:00",
+            "break_minutes": "0",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_urlaub_on_saturday_is_rejected(self):
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-30",
+            "entry_type": "urlaub",
+            "break_minutes": "0",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("entry_type", form.errors)
+
+    def test_krankheit_on_holiday_is_rejected(self):
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-01",
+            "entry_type": "krankheit",
+            "break_minutes": "0",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("entry_type", form.errors)
+
+    def test_homeoffice_on_sunday_is_rejected(self):
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-31",
+            "entry_type": "homeoffice",
+            "break_minutes": "0",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("entry_type", form.errors)
+
+    def test_urlaub_on_normal_weekday_still_valid(self):
+        # 2026-05-04 ist ein Montag, kein Feiertag in BY
+        form = self._form({
+            "job": self.job.pk,
+            "date": "2026-05-04",
+            "entry_type": "urlaub",
+            "break_minutes": "0",
+        })
+        self.assertTrue(form.is_valid(), form.errors)

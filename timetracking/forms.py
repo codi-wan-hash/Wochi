@@ -1,5 +1,6 @@
 from django import forms
 from .models import Job, UserProfile, WorkEntry
+from .utils import is_holiday
 
 
 class JobForm(forms.ModelForm):
@@ -53,8 +54,9 @@ class WorkEntryForm(forms.ModelForm):
             "break_minutes": "Pause (Minuten)",
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, bundesland=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.bundesland = bundesland
         if user is not None:
             self.fields["job"].queryset = Job.objects.filter(user=user)
 
@@ -83,4 +85,13 @@ class WorkEntryForm(forms.ModelForm):
                 existing = existing.exclude(pk=self.instance.pk)
             if existing.exists():
                 self.add_error("date", f'Für „{job.name}“ gibt es bereits einen Eintrag am {entry_date.strftime("%d.%m.%Y")}.')
+
+        if entry_date and self.bundesland:
+            is_weekend = entry_date.weekday() >= 5
+            holiday = is_holiday(entry_date, self.bundesland)
+            if (is_weekend or holiday) and entry_type and entry_type != "work":
+                self.add_error(
+                    "entry_type",
+                    "An Wochenenden und Feiertagen sind nur Arbeitseinträge möglich.",
+                )
         return cleaned_data
