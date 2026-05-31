@@ -4,14 +4,20 @@ from datetime import timedelta, datetime
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.db import IntegrityError, transaction
+from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
+
+from openai import OpenAI, RateLimitError
 
 from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions, merge_quantities, parse_quantity, _format_qty
 from shopping.models import ShoppingItem
 from .models import MealPlan, Recipe, Ingredient
 from .forms import MealPlanForm, RecipeForm, IngredientForm
+
+MAX_INGREDIENTS = 30
+MAX_PORTIONS = 50
 
 
 def get_week_dates():
@@ -451,11 +457,7 @@ def recipe_ai_suggest(request, pk):
     if not api_key:
         return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert. Bitte OPENAI_API_KEY als Umgebungsvariable setzen."}, status=503)
 
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key)
-
-        prompt = f"""Du bist ein Kochassistent. Erstelle genau 3 verschiedene Rezeptvarianten für das Gericht "{recipe.title}".
+    prompt = f"""Du bist ein Kochassistent. Erstelle genau 3 verschiedene Rezeptvarianten für das Gericht "{recipe.title}".
 Antworte ausschließlich mit folgendem JSON:
 {{
   "suggestions": [
@@ -467,6 +469,8 @@ Antworte ausschließlich mit folgendem JSON:
   ]
 }}"""
 
+    try:
+        client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -475,42 +479,43 @@ Antworte ausschließlich mit folgendem JSON:
         )
         data = json.loads(response.choices[0].message.content)
         return JsonResponse(data)
+    except RateLimitError:
+        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
     except Exception as e:
-        from openai import RateLimitError
-        if isinstance(e, RateLimitError):
-            return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
         return JsonResponse({"error": str(e)}, status=500)
 
 
 def _generate_and_store_recipe_image(recipe):
-    from openai import OpenAI
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     response = client.images.generate(
-        model="dall-e-3",
+        model="gpt-image-1",
         prompt=(
             f"Professional food photography of '{recipe.title}', restaurant quality dish, "
             "warm natural lighting, overhead shot on a wooden table, minimal props, "
             "clean background, appetizing presentation"
         ),
         size="1024x1024",
-        quality="standard",
+        quality="medium",
         n=1,
     )
-    dalle_url = response.data[0].url
+    # gpt-image-1 returns base64-encoded image data, not a URL.
+    b64_data = response.data[0].b64_json
+    data_uri = f"data:image/png;base64,{b64_data}"
 
     cloudinary_url = getattr(settings, "CLOUDINARY_URL", "")
-    if cloudinary_url:
-        import cloudinary.uploader
-        result = cloudinary.uploader.upload(
-            dalle_url,
-            folder="wochi/recipes",
-            public_id=f"recipe_{recipe.pk}",
-            overwrite=True,
+    if not cloudinary_url:
+        raise RuntimeError(
+            "Bildgenerierung benötigt Cloudinary (CLOUDINARY_URL nicht konfiguriert)."
         )
-        recipe.image = result["secure_url"]
-    else:
-        recipe.image = dalle_url
 
+    import cloudinary.uploader
+    result = cloudinary.uploader.upload(
+        data_uri,
+        folder="wochi/recipes",
+        public_id=f"recipe_{recipe.pk}",
+        overwrite=True,
+    )
+    recipe.image = result["secure_url"]
     recipe.save(update_fields=["image"])
 
 
@@ -576,3 +581,159 @@ def recipe_apply_suggestion(request, pk):
         return JsonResponse({"success": True})
 
     return JsonResponse({"error": "POST required"}, status=405)
+
+
+@login_required
+def ai_generator_form(request):
+    household = get_current_household(request.user)
+    if not household:
+        return redirect("choose_household")
+    from .utils import get_ingredient_autocomplete
+    return render(request, "meals/ai_generator.html", {
+        "household": household,
+        "autocomplete": get_ingredient_autocomplete(household),
+        "default_portions": max(household.members.count(), 2),
+    })
+
+
+@login_required
+def ai_generator_suggest(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+
+    ingredients = [str(x).strip() for x in (payload.get("ingredients") or []) if str(x).strip()]
+    if not ingredients:
+        return JsonResponse({"error": "Mindestens 1 Zutat angeben."}, status=400)
+    if len(ingredients) > MAX_INGREDIENTS:
+        return JsonResponse({"error": "Maximal 30 Zutaten."}, status=400)
+
+    try:
+        raw_portions = payload.get("portions")
+        portions = int(raw_portions if raw_portions is not None else 2)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Portionen müssen eine Zahl sein."}, status=400)
+    if not (1 <= portions <= MAX_PORTIONS):
+        return JsonResponse({"error": "Portionen müssen zwischen 1 und 50 liegen."}, status=400)
+
+    filters = [str(f).strip().lower() for f in (payload.get("filters") or []) if str(f).strip()]
+
+    api_key = getattr(settings, "OPENAI_API_KEY", "")
+    if not api_key:
+        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert."}, status=503)
+
+    ingredients_csv = ", ".join(ingredients)
+    filter_csv = ", ".join(filters) if filters else "keine"
+    prompt = (
+        f"Du bist Kochassistent. User hat folgende Zutaten zur Verfügung: {ingredients_csv}.\n"
+        f"Erstelle genau 3 verschiedene Rezeptvorschläge für {portions} Portion(en).\n"
+        f"Filter (falls aktiv): {filter_csv}.\n\n"
+        "Regeln:\n"
+        "- Nutze möglichst nur die genannten Zutaten. Übliche Pantry-Items (Salz, Pfeffer, Öl, Wasser) darfst du ergänzen.\n"
+        "- Bei Filter 'vegetarisch': kein Fleisch/Fisch.\n"
+        "- Bei Filter 'vegan': zusätzlich keine tierischen Produkte.\n"
+        "- Bei Filter 'glutenfrei': kein Weizen/Roggen/Gerste.\n"
+        "- Bei Filter 'schnell': Zubereitung max 30 Minuten.\n\n"
+        "Antworte ausschließlich mit folgendem JSON:\n"
+        "{\n"
+        '  "suggestions": [\n'
+        '    {\n'
+        '      "title": "Kurzer prägnanter Rezeptname",\n'
+        '      "duration_min": 25,\n'
+        '      "ingredients": [{"name": "Hähnchenbrust", "quantity": "300g"}],\n'
+        '      "instructions": "1. Reis aufsetzen.\\n2. ..."\n'
+        '    }\n'
+        '  ]\n'
+        "}\n"
+        "Genau 3 Vorschläge. Mengen in deutscher Notation (g, ml, EL, TL, Stück)."
+    )
+
+    try:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+        )
+        raw = response.choices[0].message.content
+    except RateLimitError:
+        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+
+    suggestions = data.get("suggestions") or []
+    if len(suggestions) != 3:
+        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+    for s in suggestions:
+        if not (s.get("title") and isinstance(s.get("ingredients"), list) and s.get("instructions")):
+            return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+
+    return JsonResponse({"suggestions": suggestions})
+
+
+@login_required
+def ai_generator_save(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    household = get_current_household(request.user)
+    if not household:
+        return JsonResponse({"error": "Kein Haushalt aktiv."}, status=400)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return JsonResponse({"error": "Titel fehlt."}, status=400)
+
+    instructions = (payload.get("instructions") or "").strip()
+    duration_min = payload.get("duration_min")
+    notes_bits = []
+    if duration_min:
+        notes_bits.append(f"~{duration_min} min")
+    notes_bits.append("per AI generiert")
+    notes = " · ".join(notes_bits)
+
+    MAX_TITLE_COLLISION_ATTEMPTS = 100
+    final_title = title
+    recipe = None
+    for attempt in range(MAX_TITLE_COLLISION_ATTEMPTS):
+        try:
+            with transaction.atomic():
+                recipe = Recipe.objects.create(
+                    household=household,
+                    title=final_title,
+                    notes=notes,
+                    instructions=instructions,
+                    created_by=request.user,
+                )
+            break
+        except IntegrityError:
+            # title already taken (race or sequential collision) — bump suffix
+            final_title = f"{title} ({attempt + 2})"
+    if recipe is None:
+        return JsonResponse({"error": "Konnte keinen eindeutigen Titel finden."}, status=409)
+
+    ingredients_payload = payload.get("ingredients") or []
+    Ingredient.objects.bulk_create([
+        Ingredient(recipe=recipe, name=(i.get("name") or "").strip(), quantity=(i.get("quantity") or "").strip())
+        for i in ingredients_payload if (i.get("name") or "").strip()
+    ])
+
+    return JsonResponse({
+        "recipe_id": recipe.pk,
+        "redirect_url": f"/meals/recipes/{recipe.pk}/",
+    })

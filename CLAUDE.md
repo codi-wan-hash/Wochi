@@ -27,7 +27,7 @@ python manage.py collectstatic
 
 ## Architecture
 
-Django 6 multi-tenant household management app. UI is in German. Deployed on Render (https://wochi.onrender.com) with PostgreSQL; SQLite locally.
+Django 6 multi-tenant household management app. UI is in German. Deployed on Hetzner (https://wochii.de) with PostgreSQL; SQLite locally.
 
 ### Apps
 
@@ -59,8 +59,10 @@ Server-rendered Django templates with Bootstrap 5.3 (CDN). No JavaScript framewo
 
 ### Deployment
 
+- Hosted on Hetzner, served at https://wochii.de
+- Containerized via `Dockerfile` (gunicorn + system deps for WeasyPrint)
 - `Procfile`: `web: gunicorn wochi.wsgi`
-- `build.sh`: installs deps, collects static, runs migrations, optionally creates superuser via env vars (`CREATE_SUPERUSER`, `DJANGO_SUPERUSER_*`)
+- `build.sh`: installs deps, collects static, runs migrations
 - WhiteNoise serves static files in production
 
 ## Working Rules for Claude

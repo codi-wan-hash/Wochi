@@ -12,6 +12,7 @@ from .models import WorkEntry
 from .utils import (
     calculate_total_saldo,
     calculate_weekly_saldo,
+    get_daily_target,
     get_holiday_name,
     get_or_create_profile,
     get_soll_days_in_range,
@@ -56,28 +57,27 @@ def dashboard(request):
         )
     }
 
-    daily_equiv = active_job.weekly_target_hours / Decimal("5")
     week_data = []
     for day in week_days:
         entry = entries_this_week.get(day)
         holiday_name = get_holiday_name(day, bundesland)
         is_weekend = day.weekday() >= 5
-        is_soll = not is_weekend and not holiday_name
-        soll = daily_equiv if is_soll else Decimal("0")
+        soll = get_daily_target(active_job, day, bundesland)
+        is_soll = soll > 0
 
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = daily_equiv
+                ist = soll
         else:
             ist = Decimal("0")
 
-        # Werte (Ist/Diff) anzeigen, wenn Werktag ODER Eintrag vorhanden.
-        # An Wochenenden/Feiertagen ohne Eintrag bleibt die Zeile leer ("–").
-        show_values = is_soll or entry is not None
         pending = is_soll and not entry and day >= today
-        no_value = not show_values
+        no_value = (not is_soll and not entry) or (holiday_name and not entry)
+        # Werte (Ist/Diff) anzeigen, wenn nicht leer; an Wochenenden/Feiertagen
+        # mit Eintrag werden so die geleisteten Stunden sichtbar.
+        show_values = not no_value
         week_data.append({
             "day": day,
             "entry": entry,
@@ -100,19 +100,15 @@ def dashboard(request):
     first_of_month = today.replace(day=1)
     _, days_in_month = monthrange(today.year, today.month)
     last_of_month = today.replace(day=days_in_month)
-    # Soll bis einschl. gestern (heute zählt nur mit Eintrag, siehe unten)
-    soll_end = today - timedelta(days=1)
-    if soll_end < first_of_month:
-        past_soll_days = []
-    else:
-        past_soll_days = get_soll_days_in_range(first_of_month, soll_end, bundesland)
-    # Heute zählt nur, wenn Eintrag existiert UND Werktag
     today_entry = WorkEntry.objects.filter(job=active_job, date=today).first()
-    today_is_soll = not (today.weekday() >= 5) and not get_holiday_name(today, bundesland)
-    month_soll_days_count = len(past_soll_days)
-    if today_entry and today_is_soll:
-        month_soll_days_count += 1
-    month_soll = daily_equiv * Decimal(str(month_soll_days_count))
+
+    month_soll = Decimal("0")
+    d = first_of_month
+    while d < today:
+        month_soll += get_daily_target(active_job, d, bundesland)
+        d += timedelta(days=1)
+    if today_entry:
+        month_soll += get_daily_target(active_job, today, bundesland)
 
     entries_this_month = WorkEntry.objects.filter(
         job=active_job, date__year=today.year, date__month=today.month, date__lte=today
@@ -122,10 +118,15 @@ def dashboard(request):
         if e.entry_type == "work":
             month_ist += Decimal(str(e.worked_hours or 0))
         else:
-            month_ist += daily_equiv
+            month_ist += get_daily_target(active_job, e.date, bundesland)
 
-    # Anzeige-Wert: Anzahl aller Soll-Werktage des Monats (informativ)
-    month_soll_days_total = len(get_soll_days_in_range(first_of_month, last_of_month, bundesland))
+    # Anzeige-Wert: Anzahl Tage im Monat mit Soll > 0 (informativ)
+    month_soll_days_total = 0
+    d = first_of_month
+    while d <= last_of_month:
+        if get_daily_target(active_job, d, bundesland) > 0:
+            month_soll_days_total += 1
+        d += timedelta(days=1)
 
     prev_month_first = (first_of_month - timedelta(days=1)).replace(day=1)
     next_month_first = last_of_month + timedelta(days=1)
@@ -219,7 +220,6 @@ def month_detail(request, year, month):
 
     active_job = profile.active_job
     bundesland = profile.bundesland
-    daily_equiv = active_job.weekly_target_hours / Decimal("5")
 
     _, days_in_month = monthrange(year, month)
     first_day = date(year, month, 1)
@@ -236,14 +236,14 @@ def month_detail(request, year, month):
         entry = entries.get(d)
         holiday_name = get_holiday_name(d, bundesland)
         is_weekend = d.weekday() >= 5
-        is_soll = not is_weekend and not holiday_name
-        soll = daily_equiv if is_soll else Decimal("0")
+        soll = get_daily_target(active_job, d, bundesland)
+        is_soll = soll > 0
 
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = daily_equiv
+                ist = soll
         else:
             ist = Decimal("0")
 
@@ -369,7 +369,6 @@ def report_view(request, year, month):
 
     active_job = profile.active_job
     bundesland = profile.bundesland
-    daily_equiv = active_job.weekly_target_hours / Decimal("5")
 
     _, days_in_month = monthrange(year, month)
     first_day = date(year, month, 1)
@@ -387,13 +386,12 @@ def report_view(request, year, month):
         entry = entries.get(d)
         holiday_name = get_holiday_name(d, bundesland)
         is_weekend = d.weekday() >= 5
-        is_soll = not is_weekend and not holiday_name
-        soll = daily_equiv if is_soll else Decimal("0")
+        soll = get_daily_target(active_job, d, bundesland)
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = daily_equiv
+                ist = soll
         else:
             ist = Decimal("0")
         days_data.append({
@@ -436,7 +434,6 @@ def report_pdf(request, year, month):
 
     active_job = profile.active_job
     bundesland = profile.bundesland
-    daily_equiv = active_job.weekly_target_hours / Decimal("5")
 
     _, days_in_month = monthrange(year, month)
     first_day = date(year, month, 1)
@@ -452,13 +449,12 @@ def report_pdf(request, year, month):
         entry = entries.get(d)
         holiday_name = get_holiday_name(d, bundesland)
         is_weekend = d.weekday() >= 5
-        is_soll = not is_weekend and not holiday_name
-        soll = daily_equiv if is_soll else Decimal("0")
+        soll = get_daily_target(active_job, d, bundesland)
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = daily_equiv
+                ist = soll
         else:
             ist = Decimal("0")
         days_data.append({
@@ -511,7 +507,6 @@ def report_email(request, year, month):
 
     active_job = profile.active_job
     bundesland = profile.bundesland
-    daily_equiv = active_job.weekly_target_hours / Decimal("5")
 
     _, days_in_month = monthrange(year, month)
     first_day = date(year, month, 1)
@@ -527,13 +522,12 @@ def report_email(request, year, month):
         entry = entries.get(d)
         holiday_name = get_holiday_name(d, bundesland)
         is_weekend = d.weekday() >= 5
-        is_soll = not is_weekend and not holiday_name
-        soll = daily_equiv if is_soll else Decimal("0")
+        soll = get_daily_target(active_job, d, bundesland)
         if entry:
             if entry.entry_type == "work":
                 ist = Decimal(str(entry.worked_hours or 0))
             else:
-                ist = daily_equiv
+                ist = soll
         else:
             ist = Decimal("0")
         days_data.append({

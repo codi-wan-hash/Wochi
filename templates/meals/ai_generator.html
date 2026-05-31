@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4" style="max-width:880px">
+    <a href="{% url 'meal_list' %}" class="text-decoration-none small text-muted">← zurück</a>
+    <h1 class="h3 mt-2">Was koche ich? 🍳</h1>
+    <p class="text-muted">Gib Zutaten ein, AI schlägt 3 Rezepte vor.</p>
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <label class="form-label fw-semibold">Zutaten</label>
+            <div id="tag-box" class="form-control d-flex flex-wrap gap-2 align-items-center" style="min-height: 48px;">
+                <input type="text" id="tag-input" list="ingredient-suggestions"
+                       class="border-0 flex-grow-1" style="outline:none; min-width:120px;"
+                       placeholder="z. B. Hähnchen, Reis, Tomaten">
+            </div>
+            <datalist id="ingredient-suggestions">
+                {% for name in autocomplete %}<option value="{{ name }}">{% endfor %}
+            </datalist>
+            <div class="form-text">Komma oder Enter fügt eine Zutat hinzu. Backspace löscht die letzte.</div>
+
+            <div class="row g-3 mt-3">
+                <div class="col-md-3">
+                    <label for="portions" class="form-label">Portionen</label>
+                    <input type="number" id="portions" class="form-control" min="1" max="50" value="{{ default_portions }}">
+                </div>
+                <div class="col-md-9">
+                    <label class="form-label">Filter (optional)</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check"><input class="form-check-input filter-cb" type="checkbox" value="vegetarisch" id="f-veg"><label class="form-check-label" for="f-veg">Vegetarisch</label></div>
+                        <div class="form-check"><input class="form-check-input filter-cb" type="checkbox" value="vegan" id="f-vegan"><label class="form-check-label" for="f-vegan">Vegan</label></div>
+                        <div class="form-check"><input class="form-check-input filter-cb" type="checkbox" value="glutenfrei" id="f-glut"><label class="form-check-label" for="f-glut">Glutenfrei</label></div>
+                        <div class="form-check"><input class="form-check-input filter-cb" type="checkbox" value="schnell" id="f-fast"><label class="form-check-label" for="f-fast">Schnell &lt;30min</label></div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="generate-btn" class="btn btn-primary mt-3" type="button">
+                <span id="generate-btn-label">3 Vorschläge generieren</span>
+                <span id="generate-btn-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status"></span>
+            </button>
+            <div id="gen-error" class="alert alert-danger mt-3 d-none"></div>
+        </div>
+    </div>
+
+    <div id="results" class="d-none">
+        <h2 class="h5 mb-3">Vorschläge</h2>
+        <div id="suggestion-cards" class="d-flex flex-column gap-3"></div>
+    </div>
+</div>
+
+{% csrf_token %}
+<script>
+(function () {
+    const tagBox = document.getElementById('tag-box');
+    const tagInput = document.getElementById('tag-input');
+    const tags = [];
+
+    function renderTags() {
+        tagBox.querySelectorAll('.tag-pill').forEach(p => p.remove());
+        tags.forEach((t, i) => {
+            const pill = document.createElement('span');
+            pill.className = 'badge bg-secondary tag-pill d-inline-flex align-items-center gap-1';
+            pill.textContent = t;
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'btn-close btn-close-white btn-sm';
+            close.style.fontSize = '0.6rem';
+            close.addEventListener('click', () => { tags.splice(i, 1); renderTags(); });
+            pill.appendChild(close);
+            tagBox.insertBefore(pill, tagInput);
+        });
+    }
+
+    function pushTag(raw) {
+        const v = (raw || '').trim().replace(/,$/, '');
+        if (!v) return;
+        if (!tags.some(t => t.toLowerCase() === v.toLowerCase())) {
+            tags.push(v);
+            renderTags();
+        }
+    }
+
+    tagInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            pushTag(tagInput.value);
+            tagInput.value = '';
+        } else if (e.key === 'Backspace' && tagInput.value === '' && tags.length > 0) {
+            tags.pop();
+            renderTags();
+        }
+    });
+    tagInput.addEventListener('change', () => {
+        if (tagInput.value) {
+            pushTag(tagInput.value);
+            tagInput.value = '';
+        }
+    });
+    tagBox.addEventListener('click', () => tagInput.focus());
+
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const btn = document.getElementById('generate-btn');
+    const btnLbl = document.getElementById('generate-btn-label');
+    const btnSpin = document.getElementById('generate-btn-spinner');
+    const errBox = document.getElementById('gen-error');
+    const resultsBox = document.getElementById('results');
+    const cardsBox = document.getElementById('suggestion-cards');
+
+    function setLoading(on) {
+        btn.disabled = on;
+        btnSpin.classList.toggle('d-none', !on);
+        btnLbl.textContent = on ? 'Generiere…' : '3 Vorschläge generieren';
+    }
+    function showError(msg) {
+        errBox.textContent = msg;
+        errBox.classList.remove('d-none');
+    }
+
+    async function generate() {
+        errBox.classList.add('d-none');
+        if (tags.length === 0) { showError('Mindestens 1 Zutat angeben.'); return; }
+        const filters = [...document.querySelectorAll('.filter-cb:checked')].map(c => c.value);
+        const portions = parseInt(document.getElementById('portions').value, 10);
+        setLoading(true);
+        cardsBox.innerHTML = '';
+        resultsBox.classList.add('d-none');
+        try {
+            const r = await fetch("{% url 'ai_generator_suggest' %}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                body: JSON.stringify({ ingredients: tags, portions, filters }),
+            });
+            const data = await r.json();
+            if (!r.ok) { showError(data.error || 'Fehler.'); return; }
+            renderSuggestions(data.suggestions);
+            resultsBox.classList.remove('d-none');
+        } catch (e) {
+            showError('Netzwerkfehler.');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function renderSuggestions(suggestions) {
+        suggestions.forEach((s, idx) => {
+            const card = document.createElement('div');
+            card.className = 'card border-0 shadow-sm rounded-4';
+            const ingHtml = (s.ingredients || []).map(i =>
+                `<li>${escapeHtml(i.quantity || '')} ${escapeHtml(i.name || '')}</li>`
+            ).join('');
+            card.innerHTML = `
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h3 class="h5 mb-1">${idx + 1}. ${escapeHtml(s.title)}</h3>
+                        <span class="text-muted small">~${escapeHtml(String(s.duration_min || '?'))} min · ${parseInt(document.getElementById('portions').value, 10)} Portion(en)</span>
+                    </div>
+                    <h4 class="h6 mt-3">Zutaten</h4>
+                    <ul class="mb-3">${ingHtml}</ul>
+                    <h4 class="h6">Zubereitung</h4>
+                    <p class="text-pre-wrap mb-3" style="white-space: pre-wrap;">${escapeHtml(s.instructions || '')}</p>
+                    <button class="btn btn-success save-btn" type="button">Diesen Vorschlag speichern</button>
+                    <span class="save-status ms-2"></span>
+                </div>`;
+            card.querySelector('.save-btn').addEventListener('click', () => save(card, s));
+            cardsBox.appendChild(card);
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function save(card, suggestion) {
+        const status = card.querySelector('.save-status');
+        const saveBtn = card.querySelector('.save-btn');
+        saveBtn.disabled = true;
+        status.textContent = 'Speichern…';
+        try {
+            const r = await fetch("{% url 'ai_generator_save' %}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                body: JSON.stringify(suggestion),
+            });
+            const data = await r.json();
+            if (!r.ok) { status.textContent = data.error || 'Fehler beim Speichern.'; saveBtn.disabled = false; return; }
+            window.location = data.redirect_url;
+        } catch (e) {
+            status.textContent = 'Netzwerkfehler.';
+            saveBtn.disabled = false;
+        }
+    }
+
+    btn.addEventListener('click', generate);
+})();
+</script>
+{% endblock %}
