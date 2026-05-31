@@ -673,3 +673,38 @@ class MonthDetailWeekendEntryTest(TestCase):
         # Es muss Bearbeiten-Link zum Eintrag geben
         pk = WorkEntry.objects.first().pk
         self.assertIn(f"/timetracking/eintrag/{pk}/bearbeiten/", content)
+
+
+class ReportWeekendEntryTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="reportweekend", password="pw123456")
+        self.client.login(username="reportweekend", password="pw123456")
+        from timetracking.models import Job
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 5, 1),
+        )
+        profile.active_job = self.job
+        profile.save()
+
+    def test_saturday_entry_appears_in_report(self):
+        from timetracking.models import WorkEntry
+        from datetime import time
+        # 2026-05-09 = Samstag
+        WorkEntry.objects.create(
+            user=self.user, job=self.job, date=date(2026, 5, 9),
+            entry_type="work",
+            start_time=time(10, 0), end_time=time(13, 30), break_minutes=0,
+        )
+        response = self.client.get("/timetracking/bericht/2026/5/")
+        content = response.content.decode("utf-8")
+        # 3,50h sollte in der Bericht-Tabelle erscheinen (de-Locale → Komma)
+        self.assertIn("3,50h", content)
+        # Datum 09.05.2026 sollte als Zeile vorhanden sein
+        self.assertIn("09.05.2026", content)

@@ -120,12 +120,12 @@
         </thead>
         <tbody>
         {% for d in days_data %}
-        {% if not d.is_weekend %}
+        {% if not d.is_weekend or d.entry %}
         <tr class="{% if d.holiday_name %}table-secondary{% endif %}">
             <td>{{ d.day|date:"D, d.m.Y" }}</td>
             <td>
-                {% if d.holiday_name %}Feiertag ({{ d.holiday_name }})
-                {% elif d.entry %}{{ d.entry.get_entry_type_display }}
+                {% if d.entry %}{{ d.entry.get_entry_type_display }}{% if d.holiday_name %} (Feiertag){% elif d.is_weekend %} (Wochenende){% endif %}
+                {% elif d.holiday_name %}Feiertag ({{ d.holiday_name }})
                 {% else %}–{% endif %}
             </td>
             <td class="text-end">{% if d.entry and d.entry.start_time %}{{ d.entry.start_time|time:"H:i" }}{% else %}–{% endif %}</td>
