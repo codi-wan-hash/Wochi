@@ -1,6 +1,6 @@
 from django import forms
 from .models import Job, UserProfile, WorkEntry
-from .utils import is_holiday
+from .utils import is_soll_day
 
 
 class JobForm(forms.ModelForm):
@@ -86,10 +86,8 @@ class WorkEntryForm(forms.ModelForm):
             if existing.exists():
                 self.add_error("date", f'Für „{job.name}“ gibt es bereits einen Eintrag am {entry_date.strftime("%d.%m.%Y")}.')
 
-        if entry_date and self.bundesland:
-            is_weekend = entry_date.weekday() >= 5
-            holiday = is_holiday(entry_date, self.bundesland)
-            if (is_weekend or holiday) and entry_type and entry_type != "work":
+        if entry_date and self.bundesland and entry_type and entry_type != "work":
+            if not is_soll_day(entry_date, self.bundesland):
                 self.add_error(
                     "entry_type",
                     "An Wochenenden und Feiertagen sind nur Arbeitseinträge möglich.",
