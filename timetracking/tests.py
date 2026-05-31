@@ -535,3 +535,65 @@ class WeekendHolidayFormValidationTest(TestCase):
             "break_minutes": "0",
         })
         self.assertTrue(form.is_valid(), form.errors)
+
+
+class WeekendHolidaySaldoTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="saldotest", password="pw123456")
+        profile = self.user.userprofile
+        profile.bundesland = "BY"
+        profile.save()
+        from timetracking.models import Job
+        self.job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 5, 4),  # Montag der KW 19
+        )
+
+    def test_saturday_work_increases_saldo(self):
+        from timetracking.models import WorkEntry
+        from timetracking.utils import calculate_total_saldo
+        from datetime import time
+        # Mo-Fr (4.-8.5.) jeweils 8h = 40h Soll/Ist = 0 Saldo
+        for day_offset in range(5):
+            WorkEntry.objects.create(
+                user=self.user, job=self.job,
+                date=date(2026, 5, 4 + day_offset),
+                entry_type="work",
+                start_time=time(8, 0), end_time=time(16, 0), break_minutes=0,
+            )
+        # Sa (9.5.) zusätzlich 4h Arbeit
+        WorkEntry.objects.create(
+            user=self.user, job=self.job,
+            date=date(2026, 5, 9),
+            entry_type="work",
+            start_time=time(10, 0), end_time=time(14, 0), break_minutes=0,
+        )
+        saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 11))
+        self.assertEqual(saldo, Decimal("4.00"))
+
+    def test_holiday_work_increases_saldo(self):
+        from timetracking.models import WorkEntry
+        from timetracking.utils import calculate_total_saldo
+        from datetime import time as t
+        # 2026-05-01 ist Feiertag in BY (Tag der Arbeit). Job-Startdatum vorziehen:
+        self.job.work_start_date = date(2026, 4, 27)
+        self.job.save()
+        # KW 18 (27.4.-3.5.): Mo-Do (27.-30.4.) je 8h, Fr (1.5.) ist Feiertag
+        # → Soll = 4 Tage × 8h = 32h
+        for day_offset in range(4):
+            WorkEntry.objects.create(
+                user=self.user, job=self.job,
+                date=date(2026, 4, 27 + day_offset),
+                entry_type="work",
+                start_time=t(8, 0), end_time=t(16, 0), break_minutes=0,
+            )
+        # Feiertag 1.5.: 5h Arbeit → +5h Saldo
+        WorkEntry.objects.create(
+            user=self.user, job=self.job,
+            date=date(2026, 5, 1),
+            entry_type="work",
+            start_time=t(9, 0), end_time=t(14, 0), break_minutes=0,
+        )
+        saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 4))
+        self.assertEqual(saldo, Decimal("5.00"))

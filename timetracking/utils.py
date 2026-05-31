@@ -53,7 +53,7 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
 
     from timetracking.models import WorkEntry
 
-    current_week_start = get_week_start(date.today())
+    current_week_start = get_week_start(as_of)
     weeks = []
     week_start = get_week_start(job.work_start_date)
 
