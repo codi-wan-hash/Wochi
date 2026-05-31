@@ -74,7 +74,7 @@
                             <td class="ps-3">
                                 {{ d.day|date:"D, d.m." }}
                                 {% if d.holiday_name %}<br><small class="text-muted">{{ d.holiday_name }}</small>{% endif %}
-                                {% if d.entry and not d.is_weekend and not d.holiday_name %}
+                                {% if d.entry %}
                                 <br><small class="text-muted">
                                     {{ d.entry.get_entry_type_display }}
                                     {% if d.entry.start_time %} {{ d.entry.start_time|time:"H:i" }}–{{ d.entry.end_time|time:"H:i" }}{% endif %}
@@ -82,22 +82,20 @@
                                 {% endif %}
                             </td>
                             <td class="text-end">
-                                {% if d.no_value %}–{% elif d.is_weekend %}{% else %}{{ d.ist|floatformat:2 }}h{% endif %}
+                                {% if d.no_value %}–{% else %}{{ d.ist|floatformat:2 }}h{% endif %}
                             </td>
                             <td class="text-end">
                                 {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% else %}–{% endif %}
                             </td>
-                            <td class="text-end pe-3 {% if d.is_soll and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
-                                {% if d.pending or not d.is_soll %}–{% else %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
+                            <td class="text-end pe-3 {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                                {% if d.pending or not d.show_values %}–{% else %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
                             </td>
                             <td class="text-end pe-3">
-                                {% if not d.is_weekend and not d.holiday_name %}
-                                    {% if d.entry %}
-                                    <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten">✎</a>
-                                    <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen">×</a>
-                                    {% else %}
-                                    <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen">+</a>
-                                    {% endif %}
+                                {% if d.entry %}
+                                <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten">✎</a>
+                                <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen">×</a>
+                                {% else %}
+                                <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen">+</a>
                                 {% endif %}
                             </td>
                         </tr>

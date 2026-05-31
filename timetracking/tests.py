@@ -597,3 +597,42 @@ class WeekendHolidaySaldoTest(TestCase):
         )
         saldo = calculate_total_saldo(self.job, "BY", as_of=date(2026, 5, 4))
         self.assertEqual(saldo, Decimal("5.00"))
+
+
+class DashboardWeekendEntryTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="dashweekend", password="pw123456")
+        self.client.login(username="dashweekend", password="pw123456")
+        from timetracking.models import Job
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        profile.active_job = self.job
+        profile.save()
+
+    def test_weekend_entry_appears_with_ist_and_diff(self):
+        from timetracking.models import WorkEntry
+        from datetime import time, timedelta
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        saturday = monday + timedelta(days=5)
+        WorkEntry.objects.create(
+            user=self.user, job=self.job, date=saturday,
+            entry_type="work",
+            start_time=time(10, 0), end_time=time(13, 0), break_minutes=0,
+        )
+        response = self.client.get("/timetracking/")
+        week_data = response.context["week_data"]
+        sat_row = next(d for d in week_data if d["day"] == saturday)
+        self.assertEqual(sat_row["entry"].pk, WorkEntry.objects.first().pk)
+        self.assertEqual(sat_row["ist"], Decimal("3.00"))
+        self.assertEqual(sat_row["soll"], Decimal("0"))
+        self.assertEqual(sat_row["diff"], Decimal("3.00"))
+        self.assertFalse(sat_row["no_value"])

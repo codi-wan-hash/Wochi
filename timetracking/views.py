@@ -73,15 +73,18 @@ def dashboard(request):
         else:
             ist = Decimal("0")
 
-        # No deficit for today/future without entry; holidays show "–"
+        # Werte (Ist/Diff) anzeigen, wenn Werktag ODER Eintrag vorhanden.
+        # An Wochenenden/Feiertagen ohne Eintrag bleibt die Zeile leer ("–").
+        show_values = is_soll or entry is not None
         pending = is_soll and not entry and day >= today
-        no_value = is_weekend or (holiday_name and not entry)
+        no_value = not show_values
         week_data.append({
             "day": day,
             "entry": entry,
             "holiday_name": holiday_name,
             "is_weekend": is_weekend,
             "is_soll": is_soll,
+            "show_values": show_values,
             "soll": soll,
             "ist": ist,
             "diff": Decimal("0") if pending else ist - soll,
