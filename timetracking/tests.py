@@ -636,3 +636,40 @@ class DashboardWeekendEntryTest(TestCase):
         self.assertEqual(sat_row["soll"], Decimal("0"))
         self.assertEqual(sat_row["diff"], Decimal("3.00"))
         self.assertFalse(sat_row["no_value"])
+
+
+class MonthDetailWeekendEntryTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="monthweekend", password="pw123456")
+        self.client.login(username="monthweekend", password="pw123456")
+        from timetracking.models import Job
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = Job.objects.create(
+            user=self.user, name="Hauptjob",
+            weekly_target_hours=Decimal("40.00"),
+            work_start_date=date(2026, 1, 1),
+        )
+        profile.active_job = self.job
+        profile.save()
+
+    def test_weekend_entry_visible_in_month_detail(self):
+        from timetracking.models import WorkEntry
+        from datetime import time
+        # 2026-05-09 ist ein Samstag
+        WorkEntry.objects.create(
+            user=self.user, job=self.job, date=date(2026, 5, 9),
+            entry_type="work",
+            start_time=time(10, 0), end_time=time(14, 0), break_minutes=0,
+        )
+        response = self.client.get("/timetracking/monat/2026/5/")
+        content = response.content.decode("utf-8")
+        # Die Stunden müssen in der gerenderten Tabelle erscheinen
+        # (Django L10N rendert mit deutschem Dezimalkomma → "4,00h")
+        self.assertIn("4,00h", content)
+        # Es muss Bearbeiten-Link zum Eintrag geben
+        pk = WorkEntry.objects.first().pk
+        self.assertIn(f"/timetracking/eintrag/{pk}/bearbeiten/", content)
