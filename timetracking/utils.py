@@ -1,16 +1,27 @@
 import holidays
 from datetime import date, timedelta
 from decimal import Decimal
+from functools import lru_cache
+
+from django.utils import timezone
+
+
+@lru_cache(maxsize=32)
+def _holiday_calendar(bundesland: str):
+    """Feiertagskalender je Bundesland, einmal aufgebaut und wiederverwendet.
+
+    Ohne Cache wurde er pro abgefragtem Tag neu instanziiert — bei einem
+    Jahresbericht rund 730-mal. Der Kalender füllt Jahre bei Bedarf selbst nach.
+    """
+    return holidays.country_holidays("DE", subdiv=bundesland)
 
 
 def is_holiday(d: date, bundesland: str) -> bool:
-    de = holidays.country_holidays("DE", subdiv=bundesland)
-    return d in de
+    return d in _holiday_calendar(bundesland)
 
 
 def get_holiday_name(d: date, bundesland: str) -> str:
-    de = holidays.country_holidays("DE", subdiv=bundesland)
-    return de.get(d, "")
+    return _holiday_calendar(bundesland).get(d, "")
 
 
 def is_soll_day(d: date, bundesland: str) -> bool:
@@ -72,41 +83,50 @@ def calculate_weekly_saldo(job, bundesland: str, as_of: date = None) -> list:
         return []
 
     if as_of is None:
-        as_of = date.today()
+        as_of = timezone.localdate()
 
     if as_of < job.work_start_date:
         return []
 
     from timetracking.models import WorkEntry
 
+    # Eine Query für den gesamten Zeitraum statt einer pro Woche. Bei einem
+    # zwei Jahre alten Job waren das vorher ~100 Queries pro Aufruf.
+    entries_by_date = {
+        e.date: e
+        for e in WorkEntry.objects.filter(
+            job=job, date__range=[job.work_start_date, as_of]
+        )
+    }
+
     current_week_start = get_week_start(as_of)
     weeks = []
     week_start = get_week_start(job.work_start_date)
 
-    while week_start <= get_week_start(as_of):
+    while week_start <= current_week_start:
         week_end = week_start + timedelta(days=6)
         effective_start = max(week_start, job.work_start_date)
         effective_end = min(week_end, as_of)
 
         week_soll = Decimal("0")
+        week_ist = Decimal("0")
+        has_entries = False
         d = effective_start
         while d <= effective_end:
             week_soll += get_daily_target(job, d, bundesland)
+            entry = entries_by_date.get(d)
+            if entry is not None:
+                has_entries = True
+                if entry.entry_type == "work":
+                    if entry.worked_hours is not None:
+                        week_ist += Decimal(str(entry.worked_hours))
+                else:
+                    week_ist += get_daily_target(job, d, bundesland)
             d += timedelta(days=1)
-
-        entries = WorkEntry.objects.filter(job=job, date__range=[effective_start, effective_end])
-
-        week_ist = Decimal("0")
-        for entry in entries:
-            if entry.entry_type == "work":
-                if entry.worked_hours is not None:
-                    week_ist += Decimal(str(entry.worked_hours))
-            else:
-                week_ist += get_daily_target(job, entry.date, bundesland)
 
         is_current = week_start == current_week_start
 
-        if is_current and not entries.exists():
+        if is_current and not has_entries:
             week_soll = Decimal("0")
 
         weeks.append({
