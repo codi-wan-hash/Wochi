@@ -3,6 +3,7 @@ import os
 from datetime import timedelta, datetime
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse, HttpResponseNotAllowed
@@ -80,6 +81,7 @@ def meal_create(request):
             meal = form.save(commit=False)
             meal.household = household
             meal.save()
+            messages.success(request, f'„{meal.recipe.title}“ wurde eingeplant.')
             return redirect("meal_list")
     else:
         from datetime import date as date_type
@@ -110,6 +112,7 @@ def meal_update(request, pk):
         form = MealPlanForm(request.POST, instance=meal, household=household)
         if form.is_valid():
             form.save()
+            messages.success(request, "Mahlzeit aktualisiert.")
             return redirect("meal_list")
     else:
         form = MealPlanForm(instance=meal, household=household)
@@ -127,6 +130,7 @@ def meal_delete(request, pk):
 
     if request.method == "POST":
         meal.delete()
+        messages.success(request, "Mahlzeit gelöscht.")
         return redirect("meal_list")
 
     return render(request, "meals/meal_confirm_delete.html", {"meal": meal})
@@ -199,6 +203,7 @@ def recipe_create(request):
             recipe.household = household
             recipe.created_by = request.user
             recipe.save()
+            messages.success(request, f'Gericht „{recipe.title}“ wurde angelegt.')
             return redirect("recipe_list")
     else:
         form = RecipeForm()
@@ -218,6 +223,7 @@ def recipe_update(request, pk):
         form = RecipeForm(request.POST, instance=recipe)
         if form.is_valid():
             form.save()
+            messages.success(request, "Gericht aktualisiert.")
             return redirect("recipe_list")
     else:
         form = RecipeForm(instance=recipe)
@@ -236,6 +242,7 @@ def recipe_delete(request, pk):
 
     if request.method == "POST":
         recipe.delete()
+        messages.success(request, "Gericht gelöscht.")
         return redirect("recipe_list")
 
     return render(request, "meals/recipe_confirm_delete.html", {"recipe": recipe})

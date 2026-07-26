@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="alert alert-warning">
-    Du bist aktuell keinem Haushalt zugeordnet.
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 rounded-4">
+            <div class="card-body p-4 text-center">
+                <h1 class="h4 mb-3">Noch kein Haushalt</h1>
+                <p class="text-muted">
+                    Diese Seite braucht einen Haushalt. Leg einen an oder tritt mit
+                    einem Einladungslink einem bestehenden bei.
+                </p>
+                <a href="{% url 'choose_household' %}" class="btn btn-dark">Haushalt auswählen</a>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -50,8 +50,11 @@
         {% endfor %}
     </div>
 {% else %}
-    <div class="alert alert-info">
-        Noch keine Gerichte angelegt.
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-5 text-center">
+            <p class="text-muted mb-3">Noch keine Gerichte angelegt.</p>
+            <a href="{% url 'recipe_create' %}" class="btn btn-dark">+ Gericht hinzufügen</a>
+        </div>
     </div>
 {% endif %}
 

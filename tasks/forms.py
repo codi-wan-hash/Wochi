@@ -4,7 +4,7 @@ from .models import Task
 
 class TaskForm(forms.ModelForm):
     due_date = forms.DateField(
-        widget=forms.DateInput(attrs={"type": "date", "class": "form_control"})
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"})
     )
 
     class Meta:

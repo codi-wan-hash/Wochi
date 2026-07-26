@@ -6,7 +6,7 @@
         <div class="card shadow-sm border-0 rounded-4">
             <div class="card-body p-4">
                 <h1 class="h3 mb-3">Mahlzeit löschen</h1>
-                <p>Möchtest du <strong>"{{ meal.title }}"</strong> wirklich löschen?</p>
+                <p>Möchtest du <strong>„{{ meal.recipe.title }}“</strong> am {{ meal.date|date:"d.m.Y" }} wirklich löschen?</p>
 
                 <form method="post">
                     {% csrf_token %}

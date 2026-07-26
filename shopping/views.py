@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -75,6 +76,7 @@ def shopping_create(request):
                 item.save()
             if is_ajax:
                 return JsonResponse({"status": "added"})
+            messages.success(request, f'„{name}“ zur Einkaufsliste hinzugefügt.')
             return redirect("shopping_list")
     else:
         form = ShoppingItemForm()
@@ -96,6 +98,7 @@ def shopping_update(request, pk):
         form = ShoppingItemForm(request.POST, instance=item)
         if form.is_valid():
             form.save()
+            messages.success(request, "Artikel aktualisiert.")
             return redirect("shopping_list")
     else:
         form = ShoppingItemForm(instance=item)
@@ -116,7 +119,9 @@ def shopping_delete(request, pk):
     if request.method == "POST":
         item.delete()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            # Kein messages.success: die Meldung käme erst beim nächsten Aufruf.
             return JsonResponse({"deleted": True})
+        messages.success(request, "Artikel gelöscht.")
         return redirect("shopping_list")
 
     return render(request, "shopping/shopping_confirm_delete.html", {"item": item})
@@ -185,6 +190,7 @@ def start_shopping(request):
             store=store,
             started_by=request.user,
         )
+        messages.success(request, f'Einkauf bei „{store.name}“ gestartet.')
         return redirect("shopping_list")
 
     return render(request, "shopping/start_shopping.html", {"stores": stores})
@@ -211,4 +217,5 @@ def end_shopping(request):
     session = _active_session(household)
     if session:
         session.end()
+        messages.success(request, "Einkauf beendet.")
     return redirect("shopping_list")

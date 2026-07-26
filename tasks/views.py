@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -38,6 +39,7 @@ def task_create(request):
             task.household = household
             task.created_by = request.user
             task.save()
+            messages.success(request, f'Aufgabe „{task.title}“ wurde erstellt.')
             return redirect("task_list")
         
     else:
@@ -57,6 +59,7 @@ def task_update(request, pk):
         form = TaskForm(request.POST, instance=task, household=household)
         if form.is_valid():
             form.save()
+            messages.success(request, "Aufgabe aktualisiert.")
             return redirect("task_list")
     else:
         form = TaskForm(instance=task, household=household)
@@ -74,7 +77,10 @@ def task_delete(request, pk):
     if request.method == "POST":
         task.delete()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            # Kein messages.success: die Meldung würde erst beim nächsten
+            # Seitenaufruf erscheinen, die Karte verschwindet aber sofort.
             return JsonResponse({"deleted": True})
+        messages.success(request, "Aufgabe gelöscht.")
         return redirect("task_list")
 
     return render(request, "tasks/task_confirm_delete.html", {"task": task})

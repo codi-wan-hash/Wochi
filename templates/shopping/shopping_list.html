@@ -69,8 +69,11 @@
         {% endfor %}
     </div>
 {% else %}
-    <div class="alert alert-info" id="empty-message">
-        Noch keine Einkaufsartikel vorhanden.
+    <div class="card border-0 shadow-sm rounded-4" id="empty-message">
+        <div class="card-body p-5 text-center">
+            <p class="text-muted mb-3">Die Einkaufsliste ist leer.</p>
+            <a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>
+        </div>
     </div>
 {% endif %}
 
@@ -153,7 +156,10 @@ document.addEventListener("click", function (e) {
                     const list = document.getElementById("shopping-list");
                     if (list && list.children.length === 0) {
                         list.insertAdjacentHTML("afterend",
-                            '<div class="alert alert-info">Noch keine Einkaufsartikel vorhanden.</div>');
+                            '<div class="card border-0 shadow-sm rounded-4"><div class="card-body p-5 text-center">' +
+                            '<p class="text-muted mb-3">Die Einkaufsliste ist leer.</p>' +
+                            '<a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>' +
+                            '</div></div>');
                         list.remove();
                     }
                 }

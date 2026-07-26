@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.views import redirect_to_login
@@ -19,6 +20,7 @@ def choose_household(request):
             if name:
                 household = Household.objects.create(name=name)
                 household.members.add(request.user)
+                messages.success(request, f'Haushalt „{household.name}“ wurde erstellt.')
                 return redirect("task_list")
 
         elif action == "join":
@@ -27,6 +29,7 @@ def choose_household(request):
                 try:
                     household = Household.objects.get(invite_token=token)
                     household.members.add(request.user)
+                    messages.success(request, f'Du bist dem Haushalt „{household.name}“ beigetreten.')
                     return redirect("task_list")
                 except Household.DoesNotExist:
                     error = "Ungültiger Einladungstoken."
@@ -47,6 +50,7 @@ def join_via_link(request, token):
 
     if request.method == "POST":
         household.members.add(request.user)
+        messages.success(request, f'Du bist dem Haushalt „{household.name}“ beigetreten.')
         return redirect("task_list")
 
     return render(request, "households/join_via_link.html", {"household": household})

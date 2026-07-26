@@ -75,8 +75,11 @@
         {% endfor %}
     </div>
 {% else %}
-    <div class="alert alert-info" id="empty-message">
-        Noch keine Aufgaben.
+    <div class="card border-0 shadow-sm rounded-4" id="empty-message">
+        <div class="card-body p-5 text-center">
+            <p class="text-muted mb-3">Noch keine Aufgaben. Was steht an?</p>
+            <a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>
+        </div>
     </div>
 {% endif %}
 
@@ -159,7 +162,10 @@ document.addEventListener("click", function (e) {
                     const list = document.getElementById("task-list");
                     if (list && list.children.length === 0) {
                         list.insertAdjacentHTML("afterend",
-                            '<div class="alert alert-info">Noch keine Aufgaben.</div>');
+                            '<div class="card border-0 shadow-sm rounded-4"><div class="card-body p-5 text-center">' +
+                            '<p class="text-muted mb-3">Noch keine Aufgaben. Was steht an?</p>' +
+                            '<a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>' +
+                            '</div></div>');
                         list.remove();
                     }
                 }
