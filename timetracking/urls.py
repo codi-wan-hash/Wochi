@@ -15,7 +15,9 @@ urlpatterns = [
     path("jobs/<int:pk>/bearbeiten/", views.job_edit, name="job_edit"),
     path("jobs/<int:pk>/loeschen/", views.job_delete, name="job_delete"),
     path("jobs/<int:pk>/aktivieren/", views.job_activate, name="job_activate"),
-    path("bericht/<int:year>/<int:month>/", views.report_view, name="report_view"),
-    path("bericht/<int:year>/<int:month>/pdf/", views.report_pdf, name="report_pdf"),
-    path("bericht/<int:year>/<int:month>/email/", views.report_email, name="report_email"),
+    path("bericht/", views.report_view, name="report_view"),
+    path("bericht/pdf/", views.report_pdf, name="report_pdf"),
+    path("bericht/email/", views.report_email, name="report_email"),
+    # Alte Monats-URL, für Bookmarks erhalten.
+    path("bericht/<int:year>/<int:month>/", views.report_month_redirect, name="report_month"),
 ]

@@ -7,9 +7,10 @@
             <p>Soll der Eintrag vom <strong>{{ entry.date|date:"d.m.Y" }}</strong> ({{ entry.get_entry_type_display }}) wirklich gelöscht werden?</p>
             <form method="post">
                 {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next }}">
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-danger">Löschen</button>
-                    <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                    <a href="{{ next }}" class="btn btn-outline-secondary">Abbrechen</a>
                 </div>
             </form>
         </div>

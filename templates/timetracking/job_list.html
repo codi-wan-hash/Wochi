@@ -34,7 +34,12 @@
         {% endfor %}
     </div>
     {% else %}
-    <p class="text-muted">Noch keine Jobs vorhanden.</p>
+    <div class="card">
+        <div class="card-body p-5 text-center">
+            <p class="text-muted mb-3">Noch keine Jobs vorhanden. Ohne Job kann keine Zeit erfasst werden.</p>
+            <a href="{% url 'timetracking:job_create' %}" class="btn btn-primary">+ Neuer Job</a>
+        </div>
+    </div>
     {% endif %}
     <div class="mt-3">
         <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary btn-sm">← Dashboard</a>

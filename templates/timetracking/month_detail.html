@@ -3,12 +3,31 @@
 <div class="container-fluid py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div class="d-flex align-items-center gap-2">
-            <a href="{% url 'timetracking:dashboard' %}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
-            <h1 class="h3 mb-0">{{ month_name }}</h1>
+            <a href="{% url 'timetracking:dashboard' %}?datum={{ first_day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
+            <h1 class="h3 mb-0">{{ first_day|date:"F Y" }}</h1>
         </div>
-        <div class="btn-group btn-group-sm">
-            <a href="{% url 'timetracking:month_detail' prev_month.year prev_month.month %}" class="btn btn-outline-secondary">← {{ prev_month|date:"F Y" }}</a>
-            <a href="{% url 'timetracking:month_detail' next_month.year next_month.month %}" class="btn btn-outline-secondary">{{ next_month|date:"F Y" }} →</a>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="btn-group btn-group-sm">
+                <a href="{% url 'timetracking:month_detail' prev_month.year prev_month.month %}" class="btn btn-outline-secondary" title="{{ prev_month|date:'F Y' }}">←</a>
+                {% if not is_current_month %}
+                <a href="{% url 'timetracking:month_detail' today.year today.month %}" class="btn btn-outline-secondary">Heute</a>
+                {% endif %}
+                <a href="{% url 'timetracking:month_detail' next_month.year next_month.month %}" class="btn btn-outline-secondary" title="{{ next_month|date:'F Y' }}">→</a>
+            </div>
+            <form method="get" action="" class="d-flex gap-1">
+                <select name="month" class="form-select form-select-sm" style="width: auto;" aria-label="Monat">
+                    {% for value, label in month_choices %}
+                    <option value="{{ value }}" {% if value == month %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <select name="year" class="form-select form-select-sm" style="width: auto;" aria-label="Jahr">
+                    {% for value in year_choices %}
+                    <option value="{{ value }}" {% if value == year %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Los</button>
+            </form>
+            <a href="{% url 'timetracking:report_view' %}?von={{ first_day|date:'Y-m-d' }}&bis={{ last_day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary">Bericht</a>
         </div>
     </div>
 
@@ -78,20 +97,20 @@
                         {% else %}–{% endif %}
                     </td>
                     <td class="text-end">
-                        {% if d.show_values %}{{ d.ist|floatformat:2 }}h{% endif %}
+                        {% if d.show_values and not d.pending %}{{ d.ist|floatformat:2 }}h{% endif %}
                     </td>
                     <td class="text-end">
                         {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% endif %}
                     </td>
-                    <td class="text-end {% if d.show_values %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
-                        {% if d.show_values %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
+                    <td class="text-end {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                        {% if d.pending %}–{% elif d.show_values %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
                     </td>
                     <td>
                         {% if d.entry %}
-                        <a href="{% url 'timetracking:entry_edit' d.entry.pk %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten">✎</a>
-                        <a href="{% url 'timetracking:entry_delete' d.entry.pk %}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen">×</a>
+                        <a href="{% url 'timetracking:entry_edit' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten" aria-label="Eintrag bearbeiten">✎</a>
+                        <a href="{% url 'timetracking:entry_delete' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen" aria-label="Eintrag löschen">×</a>
                         {% else %}
-                        <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen">+</a>
+                        <a href="{% url 'timetracking:entry_create' %}?date={{ d.day|date:'Y-m-d' }}&next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Eintrag hinzufügen" aria-label="Eintrag hinzufügen">+</a>
                         {% endif %}
                     </td>
                 </tr>

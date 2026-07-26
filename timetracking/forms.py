@@ -1,6 +1,32 @@
 from django import forms
 from .models import Job, UserProfile, WorkEntry
+from .periods import MAX_RANGE_DAYS
 from .utils import is_soll_day
+
+
+class ReportRangeForm(forms.Form):
+    von = forms.DateField(
+        label="Von",
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
+    )
+    bis = forms.DateField(
+        label="Bis",
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        von = cleaned_data.get("von")
+        bis = cleaned_data.get("bis")
+        if von and bis:
+            if bis < von:
+                self.add_error("bis", "„Bis“ darf nicht vor „Von“ liegen.")
+            elif (bis - von).days + 1 > MAX_RANGE_DAYS:
+                self.add_error(
+                    "bis",
+                    f"Der Zeitraum darf höchstens {MAX_RANGE_DAYS} Tage umfassen.",
+                )
+        return cleaned_data
 
 
 class JobForm(forms.ModelForm):

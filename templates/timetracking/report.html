@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arbeitszeitnachweis {{ active_job.name }} {{ month_name }}</title>
+    <title>Arbeitszeitnachweis {{ active_job.name }}{% if start %} {{ start|date:"d.m.Y" }}–{{ end|date:"d.m.Y" }}{% endif %}</title>
     {% if not pdf_mode %}
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     {% endif %}
@@ -31,44 +31,104 @@
     {% endif %}
 </head>
 <body class="p-4">
-    <div class="no-print mb-3 d-flex gap-2 flex-wrap">
-        <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
-        <a href="{% url 'timetracking:report_pdf' year month %}" class="btn btn-primary btn-sm">PDF herunterladen</a>
-        {% if profile.user.email %}
-        <form method="post" action="{% url 'timetracking:report_email' year month %}" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-primary btn-sm">Per E-Mail an {{ profile.user.email }}</button>
-        </form>
-        {% else %}
-        <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Keine E-Mail-Adresse hinterlegt">Per E-Mail senden</button>
-        {% endif %}
-        <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">Drucken</button>
+    <div class="no-print mb-3">
+        <div class="d-flex gap-2 flex-wrap mb-3">
+            <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
+            {% if start %}
+            <a href="{% url 'timetracking:report_pdf' %}?von={{ start|date:'Y-m-d' }}&bis={{ end|date:'Y-m-d' }}" class="btn btn-primary btn-sm">PDF herunterladen</a>
+            {% if profile.user.email %}
+            <form method="post" action="{% url 'timetracking:report_email' %}?von={{ start|date:'Y-m-d' }}&bis={{ end|date:'Y-m-d' }}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-primary btn-sm">Per E-Mail an {{ profile.user.email }}</button>
+            </form>
+            {% else %}
+            <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Keine E-Mail-Adresse hinterlegt">Per E-Mail senden</button>
+            {% endif %}
+            <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">Drucken</button>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="card-body py-3">
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    {% for p in presets %}
+                    <a href="?von={{ p.von|date:'Y-m-d' }}&bis={{ p.bis|date:'Y-m-d' }}"
+                       class="btn btn-sm {% if p.von == start and p.bis == end %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ p.label }}</a>
+                    {% endfor %}
+                </div>
+                <form method="get" class="row g-2 align-items-end">
+                    <div class="col-auto">
+                        <label for="{{ form.von.id_for_label }}" class="form-label mb-1 small">{{ form.von.label }}</label>
+                        {{ form.von }}
+                    </div>
+                    <div class="col-auto">
+                        <label for="{{ form.bis.id_for_label }}" class="form-label mb-1 small">{{ form.bis.label }}</label>
+                        {{ form.bis }}
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-outline-primary">Anzeigen</button>
+                    </div>
+                </form>
+                {% if form.errors %}
+                <div class="alert alert-danger py-2 mt-3 mb-0">
+                    {% for field, errors in form.errors.items %}
+                        {% for error in errors %}<div>{{ error }}</div>{% endfor %}
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     {% if not pdf_mode and messages %}
-    <div class="no-print mb-3">
+    <div class="no-print my-3">
         {% for message in messages %}
         <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
             {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Schließen"></button>
         </div>
         {% endfor %}
     </div>
     {% endif %}
 
     {% if not pdf_mode and not profile.user.email %}
-    <div class="no-print alert alert-warning">
+    <div class="no-print alert alert-warning mt-3">
         Du hast keine E-Mail-Adresse hinterlegt. Bitte hinterlege eine im Profil, um Berichte per E-Mail zu versenden.
     </div>
     {% endif %}
 
-    <div class="mb-4">
+    {% if start %}
+    <div class="my-4">
         <h2 class="h4">Arbeitszeitnachweis</h2>
         <p class="mb-1"><strong>Job:</strong> {{ active_job.name }}</p>
-        <p class="mb-1"><strong>Zeitraum:</strong> {{ month_name }}</p>
+        <p class="mb-1"><strong>Zeitraum:</strong> {{ start|date:"d.m.Y" }} – {{ end|date:"d.m.Y" }}</p>
         <p class="mb-1"><strong>Wochensoll:</strong> {{ active_job.weekly_target_hours }}h</p>
         <p class="mb-0"><strong>Mitarbeiter:</strong> {{ profile.user.username }}</p>
     </div>
+
+    <h5 class="mb-2">Saldo</h5>
+    <table class="table table-bordered table-sm mb-4" style="max-width: 32rem;">
+        <tbody>
+            <tr>
+                <td>Saldo vor dem Zeitraum</td>
+                <td class="text-end {% if saldo_before >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if saldo_before >= 0 %}+{% endif %}{{ saldo_before|floatformat:2 }}h
+                </td>
+            </tr>
+            <tr>
+                <td>Saldo im Zeitraum</td>
+                <td class="text-end {% if range_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if range_saldo >= 0 %}+{% endif %}{{ range_saldo|floatformat:2 }}h
+                </td>
+            </tr>
+            <tr class="fw-bold">
+                <td>Saldo am Ende</td>
+                <td class="text-end {% if saldo_after >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if saldo_after >= 0 %}+{% endif %}{{ saldo_after|floatformat:2 }}h
+                </td>
+            </tr>
+        </tbody>
+    </table>
 
     <h5 class="mb-2">Wochenübersicht</h5>
     <table class="table table-bordered table-sm mb-4">
@@ -97,10 +157,10 @@
         <tfoot class="table-light fw-bold">
             <tr>
                 <td colspan="2">Gesamt</td>
-                <td class="text-end">{{ month_soll|floatformat:2 }}h</td>
-                <td class="text-end">{{ month_ist|floatformat:2 }}h</td>
-                <td class="text-end {% if month_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
-                    {% if month_saldo >= 0 %}+{% endif %}{{ month_saldo|floatformat:2 }}h
+                <td class="text-end">{{ range_soll|floatformat:2 }}h</td>
+                <td class="text-end">{{ range_ist|floatformat:2 }}h</td>
+                <td class="text-end {% if range_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if range_saldo >= 0 %}+{% endif %}{{ range_saldo|floatformat:2 }}h
                 </td>
             </tr>
         </tfoot>
@@ -137,6 +197,7 @@
         {% endfor %}
         </tbody>
     </table>
+    {% endif %}
 
     {% if not pdf_mode %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

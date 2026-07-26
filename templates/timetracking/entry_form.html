@@ -6,6 +6,7 @@
         <div class="card-body">
             <form method="post">
                 {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next }}">
                 <div class="mb-3">
                     <label for="{{ form.job.id_for_label }}" class="form-label">{{ form.job.label }}</label>
                     {{ form.job }}
@@ -37,7 +38,7 @@
                 </div>
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary">Speichern</button>
-                    <a href="{% url 'timetracking:dashboard' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                    <a href="{{ next }}" class="btn btn-outline-secondary">Abbrechen</a>
                 </div>
             </form>
         </div>

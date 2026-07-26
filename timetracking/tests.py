@@ -579,21 +579,81 @@ class ReportViewTest(TestCase):
         profile.active_job = self.job
         profile.save()
 
+    MAY = "?von=2026-05-01&bis=2026-05-31"
+
     def test_report_view_loads(self):
-        response = self.client.get("/timetracking/bericht/2026/5/")
+        response = self.client.get("/timetracking/bericht/" + self.MAY)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Arbeitszeitnachweis")
         self.assertContains(response, "Hauptjob")
 
     def test_report_shows_week_summary(self):
-        response = self.client.get("/timetracking/bericht/2026/5/")
+        response = self.client.get("/timetracking/bericht/" + self.MAY)
         self.assertIn("week_rows", response.context)
         self.assertGreater(len(response.context["week_rows"]), 0)
 
     def test_report_shows_day_details(self):
-        response = self.client.get("/timetracking/bericht/2026/5/")
+        response = self.client.get("/timetracking/bericht/" + self.MAY)
         self.assertIn("days_data", response.context)
         self.assertEqual(len(response.context["days_data"]), 31)
+
+    def test_report_without_params_uses_current_month(self):
+        from timetracking.periods import month_bounds, today_local
+        today = today_local()
+        first, last = month_bounds(today.year, today.month)
+        response = self.client.get("/timetracking/bericht/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["start"], first)
+        self.assertEqual(response.context["end"], last)
+
+    def test_old_month_url_redirects_to_range(self):
+        response = self.client.get("/timetracking/bericht/2026/5/")
+        self.assertRedirects(
+            response,
+            "/timetracking/bericht/" + self.MAY,
+            fetch_redirect_response=False,
+        )
+
+    def test_end_before_start_is_rejected(self):
+        response = self.client.get("/timetracking/bericht/?von=2026-05-31&bis=2026-05-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+        self.assertIsNone(response.context.get("days_data"))
+
+    def test_range_longer_than_max_is_rejected(self):
+        response = self.client.get("/timetracking/bericht/?von=2020-01-01&bis=2026-01-01")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+
+    def test_week_sums_match_day_sums(self):
+        """Der eigentliche Regressionstest: früher kamen die Monatssummen aus
+        ganzen überlappenden Wochen und passten nicht zur Tagestabelle."""
+        response = self.client.get("/timetracking/bericht/" + self.MAY)
+        ctx = response.context
+        week_soll = sum(w["soll"] for w in ctx["week_rows"])
+        week_ist = sum(w["ist"] for w in ctx["week_rows"])
+        day_soll = sum(d["soll_counted"] for d in ctx["days_data"])
+        day_ist = sum(d["ist"] for d in ctx["days_data"])
+        self.assertEqual(week_soll, day_soll)
+        self.assertEqual(week_ist, day_ist)
+        self.assertEqual(ctx["range_soll"], day_soll)
+        self.assertEqual(ctx["range_ist"], day_ist)
+
+    def test_saldo_before_plus_range_equals_saldo_after(self):
+        response = self.client.get("/timetracking/bericht/" + self.MAY)
+        ctx = response.context
+        self.assertEqual(ctx["saldo_before"] + ctx["range_saldo"], ctx["saldo_after"])
+
+    def test_future_month_has_no_soll(self):
+        """Zukünftige Tage ohne Eintrag dürfen kein Minus erzeugen."""
+        from timetracking.periods import add_months, month_bounds, today_local
+        future = add_months(today_local(), 6)
+        first, last = month_bounds(future.year, future.month)
+        response = self.client.get(
+            f"/timetracking/bericht/?von={first:%Y-%m-%d}&bis={last:%Y-%m-%d}"
+        )
+        self.assertEqual(response.context["range_soll"], Decimal("0"))
+        self.assertEqual(response.context["range_saldo"], Decimal("0"))
 
 
 class ReportPDFTest(TestCase):
@@ -609,14 +669,24 @@ class ReportPDFTest(TestCase):
         profile.active_job = job
         profile.save()
 
+    MAY = "?von=2026-05-01&bis=2026-05-31"
+
     def test_pdf_download_returns_pdf(self):
-        response = self.client.get("/timetracking/bericht/2026/5/pdf/")
+        response = self.client.get("/timetracking/bericht/pdf/" + self.MAY)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/pdf")
 
+    def test_pdf_filename_contains_range(self):
+        response = self.client.get("/timetracking/bericht/pdf/" + self.MAY)
+        self.assertIn("2026-05-01_bis_2026-05-31.pdf", response["Content-Disposition"])
+
     def test_email_redirects_after_send(self):
-        response = self.client.post("/timetracking/bericht/2026/5/email/")
-        self.assertRedirects(response, "/timetracking/bericht/2026/5/", fetch_redirect_response=False)
+        response = self.client.post("/timetracking/bericht/email/" + self.MAY)
+        self.assertRedirects(
+            response,
+            "/timetracking/bericht/" + self.MAY,
+            fetch_redirect_response=False,
+        )
 
 
 class WeekendHolidayFormValidationTest(TestCase):
@@ -876,9 +946,262 @@ class ReportWeekendEntryTest(TestCase):
             entry_type="work",
             start_time=time(10, 0), end_time=time(13, 30), break_minutes=0,
         )
-        response = self.client.get("/timetracking/bericht/2026/5/")
+        response = self.client.get("/timetracking/bericht/?von=2026-05-01&bis=2026-05-31")
         content = response.content.decode("utf-8")
         # 3,50h sollte in der Bericht-Tabelle erscheinen (de-Locale → Komma)
         self.assertIn("3,50h", content)
         # Datum 09.05.2026 sollte als Zeile vorhanden sein
         self.assertIn("09.05.2026", content)
+
+
+class PeriodsTest(TestCase):
+    """Die gemeinsame Zeitraum-Logik aus timetracking/periods.py."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="periods", password="pw123456")
+        self.job = make_job(self.user, work_start_date=date(2026, 1, 1))
+
+    def test_day_rows_cover_range_inclusive(self):
+        from timetracking.periods import build_day_rows
+        rows = build_day_rows(self.job, "BY", date(2026, 3, 1), date(2026, 3, 31), date(2026, 7, 26))
+        self.assertEqual(len(rows), 31)
+        self.assertEqual(rows[0]["day"], date(2026, 3, 1))
+        self.assertEqual(rows[-1]["day"], date(2026, 3, 31))
+
+    def test_day_rows_across_year_boundary(self):
+        from timetracking.periods import build_day_rows
+        rows = build_day_rows(self.job, "BY", date(2026, 12, 28), date(2027, 1, 3), date(2026, 7, 26))
+        self.assertEqual(len(rows), 7)
+        self.assertEqual(rows[-1]["day"], date(2027, 1, 3))
+
+    def test_reversed_range_is_empty(self):
+        from timetracking.periods import build_day_rows
+        rows = build_day_rows(self.job, "BY", date(2026, 3, 31), date(2026, 3, 1), date(2026, 7, 26))
+        self.assertEqual(rows, [])
+
+    def test_future_workday_without_entry_is_pending(self):
+        from timetracking.periods import build_day_rows
+        today = date(2026, 3, 10)  # Dienstag
+        rows = build_day_rows(self.job, "BY", date(2026, 3, 9), date(2026, 3, 13), today)
+        by_day = {r["day"]: r for r in rows}
+        # Montag liegt in der Vergangenheit -> zählt als Fehlzeit
+        self.assertFalse(by_day[date(2026, 3, 9)]["pending"])
+        self.assertEqual(by_day[date(2026, 3, 9)]["soll_counted"], Decimal("8.00"))
+        # Heute und später ohne Eintrag -> pending, kein Soll, keine Differenz
+        for d in (date(2026, 3, 10), date(2026, 3, 11)):
+            self.assertTrue(by_day[d]["pending"])
+            self.assertEqual(by_day[d]["soll_counted"], Decimal("0"))
+            self.assertEqual(by_day[d]["diff"], Decimal("0"))
+            # Die Soll-Spalte zeigt den Wert trotzdem an
+            self.assertEqual(by_day[d]["soll"], Decimal("8.00"))
+
+    def test_past_day_with_entry_is_not_pending(self):
+        from datetime import time
+        from timetracking.models import WorkEntry
+        from timetracking.periods import build_day_rows
+        WorkEntry.objects.create(
+            user=self.user, job=self.job, date=date(2026, 3, 11), entry_type="work",
+            start_time=time(9, 0), end_time=time(17, 0), break_minutes=0,
+        )
+        rows = build_day_rows(self.job, "BY", date(2026, 3, 11), date(2026, 3, 11), date(2026, 3, 10))
+        self.assertFalse(rows[0]["pending"])
+        self.assertEqual(rows[0]["ist"], Decimal("8.00"))
+
+    def test_week_rows_are_clipped_to_range(self):
+        from timetracking.periods import build_day_rows, build_week_rows, summarize_rows
+        # Juli 2026 beginnt an einem Mittwoch -> erste Woche ist angeschnitten
+        rows = build_day_rows(self.job, "BY", date(2026, 7, 1), date(2026, 7, 31), date(2027, 1, 1))
+        weeks = build_week_rows(rows)
+        self.assertEqual(weeks[0]["week_start"], date(2026, 7, 1))
+        self.assertEqual(weeks[-1]["week_end"], date(2026, 7, 31))
+        totals = summarize_rows(rows)
+        self.assertEqual(sum(w["soll"] for w in weeks), totals["soll"])
+        self.assertEqual(sum(w["ist"] for w in weeks), totals["ist"])
+
+    def test_month_bounds_rejects_invalid_month(self):
+        from django.http import Http404
+        from timetracking.periods import month_bounds
+        with self.assertRaises(Http404):
+            month_bounds(2026, 13)
+        with self.assertRaises(Http404):
+            month_bounds(2026, 0)
+        with self.assertRaises(Http404):
+            month_bounds(1800, 5)
+
+    def test_add_months_crosses_year_boundary(self):
+        from timetracking.periods import add_months
+        self.assertEqual(add_months(date(2026, 1, 15), -1), date(2025, 12, 1))
+        self.assertEqual(add_months(date(2026, 12, 15), 1), date(2027, 1, 1))
+
+    def test_parse_date_param_falls_back(self):
+        from timetracking.periods import parse_date_param
+        self.assertEqual(parse_date_param("2026-03-05"), date(2026, 3, 5))
+        fallback = date(2026, 7, 26)
+        self.assertEqual(parse_date_param("kaputt", fallback), fallback)
+        self.assertEqual(parse_date_param(None, fallback), fallback)
+        self.assertEqual(parse_date_param("2026-02-30", fallback), fallback)
+
+
+class DashboardNavigationTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="navuser", password="pw123456")
+        self.client.login(username="navuser", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = make_job(self.user, work_start_date=date(2026, 1, 1))
+        profile.active_job = self.job
+        profile.save()
+
+    def test_datum_param_shows_that_week(self):
+        response = self.client.get("/timetracking/?datum=2026-03-11")  # Mittwoch
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["week_start"], date(2026, 3, 9))
+        self.assertEqual(response.context["week_end"], date(2026, 3, 15))
+        self.assertEqual(response.context["week_iso"], 11)
+        self.assertFalse(response.context["is_current_week"])
+
+    def test_month_card_follows_focus_date(self):
+        response = self.client.get("/timetracking/?datum=2026-03-11")
+        self.assertEqual(response.context["month_start"], date(2026, 3, 1))
+        self.assertEqual(response.context["month_end"], date(2026, 3, 31))
+
+    def test_invalid_datum_falls_back_to_today(self):
+        from timetracking.periods import today_local
+        response = self.client.get("/timetracking/?datum=voellig-kaputt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["focus_date"], today_local())
+        self.assertTrue(response.context["is_current_week"])
+
+    def test_no_datum_is_current_week(self):
+        response = self.client.get("/timetracking/")
+        self.assertTrue(response.context["is_current_week"])
+
+    def test_prev_week_disabled_before_job_start(self):
+        # Jobstart 2026-01-01; die Woche davor (22.-28.12.2025) hat nichts zu zeigen
+        response = self.client.get("/timetracking/?datum=2025-12-31")
+        self.assertFalse(response.context["prev_week_available"])
+        response = self.client.get("/timetracking/?datum=2026-03-11")
+        self.assertTrue(response.context["prev_week_available"])
+
+    def test_month_arrows_cross_year_boundary(self):
+        response = self.client.get("/timetracking/?datum=2026-01-15")
+        self.assertEqual(response.context["prev_month"], date(2025, 12, 1))
+        response = self.client.get("/timetracking/?datum=2026-12-15")
+        self.assertEqual(response.context["next_month"], date(2027, 1, 1))
+
+
+class MonthDetailNavigationTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="monthnav", password="pw123456")
+        self.client.login(username="monthnav", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = make_job(self.user, work_start_date=date(2026, 1, 1))
+        profile.active_job = self.job
+        profile.save()
+
+    def test_invalid_month_returns_404(self):
+        self.assertEqual(self.client.get("/timetracking/monat/2026/13/").status_code, 404)
+        self.assertEqual(self.client.get("/timetracking/monat/2026/0/").status_code, 404)
+
+    def test_month_jump_redirects_to_canonical_url(self):
+        response = self.client.get("/timetracking/monat/2026/5/?year=2026&month=3")
+        self.assertRedirects(
+            response, "/timetracking/monat/2026/3/", fetch_redirect_response=False
+        )
+
+    def test_month_names_are_german(self):
+        """strftime("%B") nahm die System-Locale und lieferte englische Namen."""
+        response = self.client.get("/timetracking/monat/2026/3/")
+        content = response.content.decode("utf-8")
+        self.assertIn("März 2026", content)
+        self.assertNotIn("March", content)
+        # Auch das Monats-Dropdown
+        self.assertIn("Dezember", content)
+        self.assertNotIn("December", content)
+
+    def test_prev_next_cross_year_boundary(self):
+        response = self.client.get("/timetracking/monat/2026/1/")
+        self.assertEqual(response.context["prev_month"], date(2025, 12, 1))
+        response = self.client.get("/timetracking/monat/2026/12/")
+        self.assertEqual(response.context["next_month"], date(2027, 1, 1))
+
+    def test_month_detail_matches_dashboard_for_same_month(self):
+        """Beide Ansichten müssen für denselben Monat dieselbe Zahl zeigen."""
+        from timetracking.periods import today_local
+        today = today_local()
+        dashboard = self.client.get("/timetracking/")
+        detail = self.client.get(f"/timetracking/monat/{today.year}/{today.month}/")
+        self.assertEqual(dashboard.context["month_soll"], detail.context["month_soll"])
+        self.assertEqual(dashboard.context["month_ist"], detail.context["month_ist"])
+        self.assertEqual(dashboard.context["month_saldo"], detail.context["month_saldo"])
+
+
+class EntryNextRedirectTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="nextuser", password="pw123456")
+        self.client.login(username="nextuser", password="pw123456")
+        profile = self.user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        self.job = make_job(self.user, work_start_date=date(2026, 1, 1))
+        profile.active_job = self.job
+        profile.save()
+
+    def _post_entry(self, query=""):
+        return self.client.post("/timetracking/eintrag/neu/" + query, {
+            "job": self.job.pk,
+            "date": "2026-03-11",
+            "entry_type": "work",
+            "start_time": "09:00",
+            "end_time": "17:00",
+            "break_minutes": 0,
+            "next": "/timetracking/monat/2026/3/" if query else "",
+        })
+
+    def test_next_returns_to_origin(self):
+        response = self._post_entry("?next=/timetracking/monat/2026/3/")
+        self.assertRedirects(
+            response, "/timetracking/monat/2026/3/", fetch_redirect_response=False
+        )
+
+    def test_external_next_is_rejected(self):
+        response = self.client.post(
+            "/timetracking/eintrag/neu/?next=https://example.com/phish",
+            {
+                "job": self.job.pk,
+                "date": "2026-03-11",
+                "entry_type": "work",
+                "start_time": "09:00",
+                "end_time": "17:00",
+                "break_minutes": 0,
+            },
+        )
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+
+    def test_without_next_falls_back_to_dashboard(self):
+        response = self._post_entry()
+        self.assertRedirects(response, "/timetracking/", fetch_redirect_response=False)
+
+    def test_delete_honours_next(self):
+        from datetime import time
+        from timetracking.models import WorkEntry
+        entry = WorkEntry.objects.create(
+            user=self.user, job=self.job, date=date(2026, 3, 12), entry_type="work",
+            start_time=time(9, 0), end_time=time(17, 0), break_minutes=0,
+        )
+        response = self.client.post(
+            f"/timetracking/eintrag/{entry.pk}/loeschen/",
+            {"next": "/timetracking/monat/2026/3/"},
+        )
+        self.assertRedirects(
+            response, "/timetracking/monat/2026/3/", fetch_redirect_response=False
+        )
