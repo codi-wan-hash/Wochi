@@ -127,7 +127,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'de'
 
-TIME_ZONE = 'UTC'
+# Deutsche App: timezone.localdate() muss den deutschen Kalendertag liefern.
+# Mit 'UTC' war zwischen 00:00 und 02:00 Ortszeit noch der Vortag aktiv.
+TIME_ZONE = 'Europe/Berlin'
 
 USE_I18N = True
 
@@ -204,3 +206,7 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@wochii.de")
+
+# Gültigkeit der Links zum Zurücksetzen des Passworts (24 Stunden), passend
+# zur Frist der E-Mail-Bestätigung im Profil.
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
