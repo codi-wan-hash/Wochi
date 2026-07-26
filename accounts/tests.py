@@ -1,7 +1,9 @@
+import re
 import uuid
 from datetime import timedelta
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 from django.core import mail
@@ -185,3 +187,117 @@ class PasswordChangeSmokeTest(TestCase):
     def test_done_page_loads(self):
         response = self.client.get("/accounts/profil/passwort/erfolg/")
         self.assertEqual(response.status_code, 200)
+
+
+class PasswordResetFlowTest(TestCase):
+    """Der komplette Ablauf „Passwort vergessen“ von der Anfrage bis zum Login."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="vergesslich", password="altesPasswort123", email="vergesslich@example.com"
+        )
+
+    def _request_reset(self, email):
+        return self.client.post(reverse("password_reset"), {"email": email})
+
+    def _link_from_mail(self):
+        body = mail.outbox[0].body
+        match = re.search(r"/accounts/passwort-neu/[^/]+/[^/\s]+/", body)
+        self.assertIsNotNone(match, f"Kein Reset-Link in der E-Mail:\n{body}")
+        return match.group(0)
+
+    def test_form_page_loads(self):
+        response = self.client.get(reverse("password_reset"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Passwort vergessen")
+        # Nicht die englische Admin-Vorlage
+        self.assertTemplateUsed(response, "registration/password_reset_form.html")
+
+    def test_full_reset_flow(self):
+        response = self._request_reset("vergesslich@example.com")
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Wochii", mail.outbox[0].subject)
+
+        link = self._link_from_mail()
+        # Django leitet auf eine set-password-URL um, bevor das Formular kommt
+        response = self.client.get(link, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["validlink"])
+
+        response = self.client.post(response.request["PATH_INFO"], {
+            "new_password1": "ganzNeuesPasswort456",
+            "new_password2": "ganzNeuesPasswort456",
+        })
+        self.assertRedirects(response, reverse("password_reset_complete"))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("ganzNeuesPasswort456"))
+        self.assertTrue(self.client.login(
+            username="vergesslich", password="ganzNeuesPasswort456"
+        ))
+
+    def test_unknown_email_gives_same_answer_without_mail(self):
+        """Die Antwort darf nicht verraten, ob es das Konto gibt."""
+        response = self._request_reset("gibtsnicht@example.com")
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_done_page_does_not_confirm_account_exists(self):
+        response = self.client.get(reverse("password_reset_done"))
+        self.assertContains(response, "Falls ein Konto")
+
+    def test_tampered_token_shows_invalid_page(self):
+        self._request_reset("vergesslich@example.com")
+        link = self._link_from_mail()
+        broken = link[:-5] + "xxxx/"
+        response = self.client.get(broken, follow=True)
+        self.assertFalse(response.context["validlink"])
+        self.assertContains(response, "Link ungültig")
+
+    def test_link_works_only_once(self):
+        self._request_reset("vergesslich@example.com")
+        link = self._link_from_mail()
+        response = self.client.get(link, follow=True)
+        self.client.post(response.request["PATH_INFO"], {
+            "new_password1": "ganzNeuesPasswort456",
+            "new_password2": "ganzNeuesPasswort456",
+        })
+        # Zweiter Versuch mit demselben Link
+        response = self.client.get(link, follow=True)
+        self.assertFalse(response.context["validlink"])
+
+    def test_throttle_stops_mail_flood(self):
+        cache.clear()
+        for _ in range(5):
+            self._request_reset("vergesslich@example.com")
+        self.assertEqual(len(mail.outbox), 5)
+        # Die sechste Anfahrt sieht für den Absender identisch aus, sendet aber nicht
+        response = self._request_reset("vergesslich@example.com")
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 5)
+        cache.clear()
+
+
+class AuthUrlNamesTest(TestCase):
+    """Regression: django.contrib.auth.urls hatte dieselben Namen registriert
+    und überschrieb dabei unsere eigenen Templates."""
+
+    def test_password_change_resolves_to_own_view(self):
+        self.assertEqual(reverse("password_change"), "/accounts/profil/passwort/")
+        self.assertEqual(reverse("password_change_done"), "/accounts/profil/passwort/erfolg/")
+
+    def test_login_path_unchanged(self):
+        self.assertEqual(reverse("login"), "/accounts/login/")
+        self.assertEqual(reverse("logout"), "/accounts/logout/")
+
+    def test_password_change_uses_bootstrap_template(self):
+        User.objects.create_user(username="stiluser", password="pw12345678")
+        self.client.login(username="stiluser", password="pw12345678")
+        response = self.client.get(reverse("password_change"))
+        self.assertTemplateUsed(response, "accounts/password_change_form.html")
+
+    def test_login_page_links_to_password_reset(self):
+        response = self.client.get(reverse("login"))
+        self.assertContains(response, reverse("password_reset"))

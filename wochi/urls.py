@@ -19,8 +19,10 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Die Auth-Views sind bewusst in accounts/urls.py ausgeschrieben statt über
+    # django.contrib.auth.urls eingebunden: der Include registrierte dieselben
+    # URL-Namen ein zweites Mal und überschrieb dabei unsere eigenen Templates.
     path("", include("accounts.urls")),
-    path("accounts/", include("django.contrib.auth.urls")),
     path("households/", include("households.urls")),
     path("tasks/", include("tasks.urls")),
     path("meals/", include("meals.urls")),

@@ -2,6 +2,8 @@ import uuid
 from datetime import timedelta
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login
+from django.contrib.auth import views as auth_views
+from django.core.cache import cache
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.urls import reverse
@@ -16,6 +18,36 @@ from shopping.models import ShoppingItem
 from django.contrib import messages
 
 from .forms import RegisterForm, ProfileForm, EmailChangeForm
+
+# Passwort-Reset ist ein bekannter Vektor für Mail-Bombing: wer eine fremde
+# Adresse kennt, kann sie ohne Bremse mit Reset-Mails zuschütten.
+PASSWORD_RESET_MAX_ATTEMPTS = 5
+PASSWORD_RESET_WINDOW_SECONDS = 60 * 60
+
+
+class PasswordResetThrottledView(auth_views.PasswordResetView):
+    """Reset-Anfragen pro IP begrenzen.
+
+    Mit dem Default-Cache (LocMemCache, pro Prozess) ist das eine Bremsschwelle,
+    kein harter Schutz — für einen echten Schutz bräuchte es einen geteilten
+    Cache (Redis) oder eine Sperre auf Reverse-Proxy-Ebene.
+    """
+
+    def _client_ip(self):
+        forwarded = self.request.META.get("HTTP_X_FORWARDED_FOR", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return self.request.META.get("REMOTE_ADDR", "")
+
+    def form_valid(self, form):
+        key = f"pwreset:{self._client_ip()}"
+        attempts = cache.get(key, 0)
+        if attempts >= PASSWORD_RESET_MAX_ATTEMPTS:
+            # Bewusst dieselbe Zielseite wie im Erfolgsfall: die Antwort darf
+            # nicht verraten, ob eine Adresse existiert oder gesperrt ist.
+            return redirect(self.get_success_url())
+        cache.set(key, attempts + 1, PASSWORD_RESET_WINDOW_SECONDS)
+        return super().form_valid(form)
 
 
 def register_view(request):
