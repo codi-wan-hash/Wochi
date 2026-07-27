@@ -46,6 +46,8 @@ class JobForm(forms.ModelForm):
                 f: forms.NumberInput(attrs={
                     "class": "form-control weekday-hours-input",
                     "step": "0.25", "min": "0", "max": "24",
+                    # Zifferntastatur mit Dezimaltrenner auf dem Smartphone
+                    "inputmode": "decimal",
                 })
                 for f in Job._WEEKDAY_FIELDS
             },
@@ -88,7 +90,7 @@ class WorkEntryForm(forms.ModelForm):
             "entry_type": forms.Select(attrs={"class": "form-select"}),
             "start_time": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
             "end_time": forms.TimeInput(attrs={"type": "time", "class": "form-control"}),
-            "break_minutes": forms.NumberInput(attrs={"class": "form-control", "min": "0"}),
+            "break_minutes": forms.NumberInput(attrs={"class": "form-control", "min": "0", "inputmode": "numeric"}),
         }
         labels = {
             "job": "Job",

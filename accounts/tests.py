@@ -301,3 +301,17 @@ class AuthUrlNamesTest(TestCase):
     def test_login_page_links_to_password_reset(self):
         response = self.client.get(reverse("login"))
         self.assertContains(response, reverse("password_reset"))
+
+
+class RegisterFormMarkupTest(TestCase):
+    """Die Labels der Registrierung müssen mit ihrem Feld verknüpft sein.
+
+    Ohne for-Attribut ist das Label auf dem Smartphone kein Tap-Target,
+    was die Trefferfläche pro Feld etwa halbiert.
+    """
+
+    def test_labels_are_linked_to_inputs(self):
+        response = Client().get(reverse("register"))
+        self.assertEqual(response.status_code, 200)
+        for field_id in ("id_username", "id_email", "id_password1", "id_password2"):
+            self.assertContains(response, f'for="{field_id}"')

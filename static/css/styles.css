@@ -15,6 +15,7 @@
 /* ===== Base ===== */
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -41,6 +42,7 @@ h1, h2, h3, h4, h5, h6 {
   left: 0;
   width: var(--sidebar-width);
   height: 100vh;
+  height: 100dvh;
   background: var(--color-sidebar);
   display: flex;
   flex-direction: column;
@@ -57,7 +59,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 2rem 2.5rem;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .has-sidebar .app-content {
     margin-left: 0;
     padding-top: 0;
@@ -190,7 +192,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: space-between;
 }
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .mobile-topbar {
     display: flex;
   }
@@ -402,4 +404,318 @@ h1, h2, h3, h4, h5, h6 {
   padding: 10px 16px 4px;
   background: var(--color-accent);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* ============================================================
+   MOBILE (< 768px)
+   Breakpoint deckungsgleich mit Bootstraps d-md-*.
+   Alles hier ist ab 768px wirkungslos - die Desktop-Darstellung
+   bleibt unveraendert.
+   ============================================================ */
+@media (max-width: 767.98px) {
+
+  /* ---- Layout ---- */
+  /* 100vh + sticky Topbar => jede Seite scrollt sonst mind. 50px */
+  .app-content {
+    min-height: 0;
+  }
+  /* Ueberschrift klebte bisher direkt unter der dunklen Topbar */
+  .has-sidebar .app-content {
+    padding-top: 0.75rem;
+  }
+
+  /* Doppeltes Padding: .container liegt bereits in .app-content,
+     das mobil selbst 1rem setzt. Bootstrap nutzt hier kein !important. */
+  .app-content > .container,
+  .app-content > .container-fluid {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* .mt-5 ist eine !important-Utility -> hoehere Spezifitaet noetig */
+  .app-content > .container.mt-5 {
+    margin-top: 1rem !important;
+  }
+
+  /* ---- Lange Woerter und URLs duerfen brechen ---- */
+  /* 'anywhere' (nicht 'break-word') senkt auch die min-content-Breite,
+     dadurch koennen Flex-Kinder wieder schrumpfen. Behebt u. a. den
+     Einladungslink auf der Startseite. */
+  h1, h2, h3, h4, h5, h6,
+  p, code, .card-title, .badge, .list-group-item, .alert {
+    overflow-wrap: anywhere;
+  }
+
+  /* ---- Flex-Zeilen duerfen umbrechen ---- */
+  /* Trifft die Kopfzeilen der Listenseiten (Titel links, Buttons rechts) */
+  .app-content > .d-flex.justify-content-between {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .app-content > .d-flex.justify-content-between > .d-flex {
+    flex-wrap: wrap;
+  }
+  /* Button-Reihen. Umbruch tritt nur ein, wenn es sonst ueberliefe -
+     wo alles passt, ist die Regel wirkungslos. */
+  .d-flex.gap-2:not(.flex-column),
+  .d-flex.gap-3:not(.flex-column) {
+    flex-wrap: wrap;
+  }
+  .d-flex.justify-content-between {
+    gap: 0.5rem;
+  }
+
+  /* ---- Tap-Flaechen >= 44px ---- */
+  /* .btn deckt auch .btn-group-sm > .btn ab (die Pfeile der Wochen- und
+     Monatsnavigation tragen selbst kein .btn-sm). Bewusst NICHT .btn-close
+     ohne .btn: der AI-Generator erzeugt per JS ein .btn-close.btn-sm.
+     min-height/min-width kollidiert mit keiner Bootstrap-Utility und wirkt
+     deshalb auch gegen py-0/px-2. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Eingabefelder ebenfalls auf Daumengroesse. Checkboxen und Radios sind
+     ausgenommen - deren Trefferflaeche ist das umschliessende Label. */
+  .form-control,
+  .form-select,
+  .form-control-sm,
+  .form-select-sm,
+  .input-group-sm > .form-control,
+  .input-group-sm > .form-select,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+  /* .btn-close ist content-box: 1em + 2x0.875rem = 44px */
+  .offcanvas-header .btn-close,
+  .modal-header .btn-close {
+    padding: 0.875rem;
+  }
+  .mobile-topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-block: -0.5rem;
+  }
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -0.5rem;
+  }
+  .sidebar-offcanvas .sidebar-nav a {
+    padding-block: 0.85rem;
+  }
+  .sidebar-offcanvas .sidebar-user,
+  .sidebar-offcanvas .sidebar-logout-btn {
+    min-height: 44px;
+  }
+  .btn[data-filter] {
+    margin: 0 0.25rem 0.5rem 0;
+  }
+  /* Menge im Rezept oeffnet per Klick die Inline-Bearbeitung */
+  .qty-display {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 0.35rem;
+  }
+  /* Djangos CheckboxSelectMultiple: das <label> umschliesst die Checkbox.
+     Bootstraps .form-check hat den Input als Geschwister und wird von
+     diesem Selektor nicht getroffen. */
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+  }
+  label > input[type="checkbox"],
+  label > input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .form-check {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .form-check .form-check-input {
+    margin-top: 0;
+    margin-left: 0;
+    float: none;
+  }
+  .form-check-input {
+    width: 1.25em;
+    height: 1.25em;
+  }
+
+  /* ---- iOS zoomt beim Fokus in Felder unter 16px hinein ---- */
+  /* .form-control-sm muss namentlich stehen: der nackte input-Selektor
+     verliert sonst gegen Bootstraps Klassenregel. */
+  .form-control,
+  .form-select,
+  .form-control-sm,
+  .form-select-sm,
+  .input-group-sm > .form-control,
+  .input-group-sm > .form-select,
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* ---- Innenabstaende und Bilder ---- */
+  .card-body.p-4 { padding: 1.25rem !important; }
+  .card-body.p-5 { padding: 1.5rem !important; }
+  /* Hoehe steht inline im Template -> !important ist hier der einzige Weg */
+  #recipe-img        { height: 200px !important; }
+  #image-placeholder { height: auto !important; padding: 1rem; }
+}
+
+/* ===== Arbeitszeit-Tabellen: Karten unter 768px =====
+   Opt-in ueber .tt-stack am <table>. Rollen der Zellen:
+     .tt-day     Kopfzeile der Karte
+     .tt-type    gedaempfte Meta-Zeile darunter
+     .tt-inline  Wert, der sich eine Zeile mit dem Nachbarn teilt
+     .tt-actions Buttonzelle, oben rechts
+     data-label  sichtbares Label vor dem Wert                          */
+@media (max-width: 767.98px) {
+  .tt-stack,
+  .tt-stack tbody,
+  .tt-stack tfoot,
+  .tt-stack tr,
+  .tt-stack td {
+    display: block;
+    width: auto;
+  }
+  .tt-stack thead { display: none; }
+
+  .tt-stack tr {
+    position: relative;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    /* Bootstrap faerbt table-warning/table-info sonst nur die Zellen,
+       die hier keine Flaeche mehr haben. --bs-table-bg erbt vom <tr>. */
+    background-color: var(--bs-table-bg, transparent);
+  }
+  .tt-stack tbody tr:last-child { border-bottom: 0; }
+
+  /* .tt-stack td schlaegt .ps-3/.pe-3/.text-end ueber die Spezifitaet */
+  .tt-stack td {
+    padding: 0 !important;
+    border: 0 !important;
+    text-align: left !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  /* Leere Zellen (z. B. Soll am Wochenende) verschwinden ganz */
+  .tt-stack td:empty { display: none !important; }
+
+  .tt-stack td.tt-day {
+    font-weight: 600;
+    padding-right: 6.25rem !important;   /* Platz fuer .tt-actions */
+  }
+  .tt-stack td.tt-type {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+  }
+
+  .tt-stack td[data-label]::before {
+    content: attr(data-label) " ";
+    font-weight: 400;
+    color: var(--color-text-muted);
+  }
+  .tt-stack td.tt-inline { display: inline-block; }
+  .tt-stack td.tt-inline + td.tt-inline { margin-left: 0.4rem; }
+  /* \00a0 statt Leerzeichen: ein normales Leerzeichen nach einer
+     4-stelligen CSS-Escape-Sequenz wird als deren Abschluss verschluckt. */
+  .tt-stack td.tt-inline + td.tt-inline::before {
+    content: "\00b7\00a0" attr(data-label) " ";
+    color: var(--color-text-muted);
+  }
+  /* Ist der linke Nachbar leer und ausgeblendet, entfaellt der Trennpunkt */
+  .tt-stack td.tt-inline:empty + td.tt-inline::before {
+    content: attr(data-label) " ";
+  }
+
+  .tt-stack td.tt-actions {
+    position: absolute;
+    top: 0.3rem;
+    right: 0.6rem;
+    display: flex;
+    gap: 0.3rem;
+  }
+  .tt-stack td.tt-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    font-size: 1rem;
+    line-height: 1;
+  }
+}
+
+/* ===== Wochen-Essensplan: pro Tag gestapelt unter 768px ===== */
+@media (max-width: 767.98px) {
+  /* .meal-row hat genau drei direkte Kinder (Tag, Mittag, Abend);
+     mit einer Spalte stapeln sie in Quellreihenfolge. */
+  .meal-row { grid-template-columns: 1fr; }
+
+  .day-col {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    padding: 8px 16px 6px;
+    /* halbtransparent, damit is-today/is-weekend/:hover durchscheinen */
+    background: rgba(0, 0, 0, .025);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .day-name,
+  .day-date { font-size: .8rem; }
+
+  /* border-left wird bei Stapelung zu border-top, aber nur zwischen den
+     beiden Mahlzeiten - sonst Doppellinie unter der Kopfzeile. */
+  .meal-col {
+    border-left: 0;
+    padding: 8px 16px;
+    min-height: 52px;
+  }
+  .meal-col + .meal-col { border-top: 1px solid var(--color-border); }
+
+  /* Volle Breite -> Gerichtsnamen werden nicht mehr abgeschnitten */
+  .meal-content { min-width: 0; padding-left: 0; }
+  .meal-title { overflow-wrap: anywhere; }
+
+  .meal-actions { gap: .25rem; }
+  .meal-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    font-size: 1.05rem;
+  }
+  .add-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 6px 14px;
+    font-size: .875rem;
+  }
+}
+
+/* Letzte Instanz gegen horizontalen Scroll. Bewusst in eigener Query,
+   damit sie beim Debuggen einzeln abschaltbar ist. 'clip' statt 'hidden'
+   erzeugt keinen Scroll-Container und laesst die sticky Topbar intakt. */
+@media (max-width: 767.98px) {
+  body { overflow-x: clip; }
 }

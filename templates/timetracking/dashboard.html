@@ -3,7 +3,7 @@
 <div class="container-fluid py-4">
 
     <!-- Job-Switcher -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div class="d-flex align-items-center gap-3">
             <h1 class="h3 mb-0">Arbeitszeit</h1>
             <div class="dropdown">
@@ -53,7 +53,7 @@
                             KW {{ week_iso }}
                             <small class="text-muted fw-normal">{{ week_start|date:"d.m." }}–{{ week_end|date:"d.m.Y" }}</small>
                         </h5>
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
                             <div class="btn-group btn-group-sm">
                                 {% if prev_week_available %}
                                 <a href="?datum={{ prev_week_day|date:'Y-m-d' }}" class="btn btn-outline-secondary" title="Vorherige Woche">←</a>
@@ -80,7 +80,7 @@
                     </small>
                 </div>
                 <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0 tt-stack">
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-3">Tag</th>
@@ -93,7 +93,7 @@
                         <tbody>
                         {% for d in week_data %}
                         <tr class="{% if d.is_weekend %}text-muted{% elif d.holiday_name %}table-info{% elif d.day == today %}table-warning{% endif %}">
-                            <td class="ps-3">
+                            <td class="ps-3 tt-day">
                                 {{ d.day|date:"D, d.m." }}
                                 {% if d.holiday_name %}<br><small class="text-muted">{{ d.holiday_name }}</small>{% endif %}
                                 {% if d.entry %}
@@ -103,16 +103,16 @@
                                 </small>
                                 {% endif %}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end tt-inline" data-label="Ist">
                                 {% if d.no_value %}–{% else %}{{ d.ist|floatformat:2 }}h{% endif %}
                             </td>
-                            <td class="text-end">
+                            <td class="text-end tt-inline" data-label="Soll">
                                 {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% else %}–{% endif %}
                             </td>
-                            <td class="text-end pe-3 {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
+                            <td class="text-end pe-3 {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}" data-label="Diff">
                                 {% if d.pending or not d.show_values %}–{% else %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
                             </td>
-                            <td class="text-end pe-3">
+                            <td class="text-end pe-3 tt-actions">
                                 {% if d.entry %}
                                 <a href="{% url 'timetracking:entry_edit' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten" aria-label="Eintrag bearbeiten">✎</a>
                                 <a href="{% url 'timetracking:entry_delete' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen" aria-label="Eintrag löschen">×</a>
@@ -131,7 +131,7 @@
         <!-- Monatsübersicht -->
         <div class="col-lg-5">
             <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h5 class="mb-0">{{ focus_date|date:"F Y" }}</h5>
                     <div class="btn-group btn-group-sm">
                         <a href="?datum={{ prev_month|date:'Y-m-d' }}" class="btn btn-outline-secondary" title="Vorheriger Monat">←</a>
@@ -140,14 +140,14 @@
                 </div>
                 <div class="card-body">
                     <dl class="row mb-0">
-                        <dt class="col-7">Arbeitstage (Soll)</dt>
-                        <dd class="col-5">{{ month_soll_days }}</dd>
-                        <dt class="col-7">Sollstunden</dt>
-                        <dd class="col-5">{{ month_soll|floatformat:2 }}h</dd>
-                        <dt class="col-7">Iststunden</dt>
-                        <dd class="col-5">{{ month_ist|floatformat:2 }}h</dd>
-                        <dt class="col-7 fw-bold">Monatssaldo</dt>
-                        <dd class="col-5 fw-bold {% if month_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        <dt class="col-8 col-md-7">Arbeitstage (Soll)</dt>
+                        <dd class="col-4 col-md-5">{{ month_soll_days }}</dd>
+                        <dt class="col-8 col-md-7">Sollstunden</dt>
+                        <dd class="col-4 col-md-5">{{ month_soll|floatformat:2 }}h</dd>
+                        <dt class="col-8 col-md-7">Iststunden</dt>
+                        <dd class="col-4 col-md-5">{{ month_ist|floatformat:2 }}h</dd>
+                        <dt class="col-8 col-md-7 fw-bold">Monatssaldo</dt>
+                        <dd class="col-4 col-md-5 fw-bold {% if month_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
                             {% if month_saldo >= 0 %}+{% endif %}{{ month_saldo|floatformat:2 }}h
                         </dd>
                     </dl>

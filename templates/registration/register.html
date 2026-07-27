@@ -9,25 +9,25 @@
         {{ form.non_field_errors }}
 
         <div class="mb-3">
-            <label class="form-label">Benutzername</label>
+            <label class="form-label" for="{{ form.username.id_for_label }}">Benutzername</label>
             {{ form.username }}
             {{ form.username.errors }}
         </div>
 
         <div class="mb-3">
-            <label class="form-label">E-Mail</label>
+            <label class="form-label" for="{{ form.email.id_for_label }}">E-Mail</label>
             {{ form.email }}
             {{ form.email.errors }}
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Passwort</label>
+            <label class="form-label" for="{{ form.password1.id_for_label }}">Passwort</label>
             {{ form.password1 }}
             {{ form.password1.errors }}
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Passwort wiederholen</label>
+            <label class="form-label" for="{{ form.password2.id_for_label }}">Passwort wiederholen</label>
             {{ form.password2 }}
             {{ form.password2.errors }}
         </div>

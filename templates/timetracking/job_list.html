@@ -8,7 +8,7 @@
     {% if jobs %}
     <div class="list-group">
         {% for job in jobs %}
-        <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
                 <div class="fw-bold">
                     {{ job.name }}

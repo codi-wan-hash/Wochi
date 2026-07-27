@@ -86,3 +86,11 @@ class TaskViewTest(TestCase):
         self.assertRedirects(
             response, "/accounts/login/?next=/tasks/", fetch_redirect_response=False
         )
+
+    def test_grid_column_class_stays_col_md_6(self):
+        """Das Inline-JS in task_list.html selektiert '#task-list > .col-md-6'
+        und '.closest(".col-md-6")'. Wird die Spaltenklasse beim Mobile-Umbau
+        ersetzt, brechen Filter, Erledigen-Toggle und Löschen still.
+        """
+        self._create_task()
+        self.assertContains(self.client.get("/tasks/"), 'class="col-md-6"')

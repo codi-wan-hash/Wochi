@@ -14,7 +14,7 @@
                 {% endif %}
                 <a href="{% url 'timetracking:month_detail' next_month.year next_month.month %}" class="btn btn-outline-secondary" title="{{ next_month|date:'F Y' }}">→</a>
             </div>
-            <form method="get" action="" class="d-flex gap-1">
+            <form method="get" action="" class="d-flex flex-wrap gap-1">
                 <select name="month" class="form-select form-select-sm" style="width: auto;" aria-label="Monat">
                     {% for value, label in month_choices %}
                     <option value="{{ value }}" {% if value == month %}selected{% endif %}>{{ label }}</option>
@@ -72,7 +72,7 @@
     <!-- Tagesliste -->
     <div class="card">
         <div class="card-body p-0">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover mb-0 tt-stack">
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3">Datum</th>
@@ -86,26 +86,21 @@
                 <tbody>
                 {% for d in days_data %}
                 <tr class="{% if d.is_weekend %}text-muted{% elif d.holiday_name %}table-info{% endif %}">
-                    <td class="ps-3">
+                    <td class="ps-3 tt-day">
                         {{ d.day|date:"D, d.m.Y" }}
                         {% if d.holiday_name %}<small class="ms-1 text-muted">({{ d.holiday_name }})</small>{% endif %}
                     </td>
-                    <td>
+                    <td class="tt-type">
                         {% if d.entry %}{{ d.entry.get_entry_type_display }}
                         {% elif d.is_weekend %}Wochenende
                         {% elif d.holiday_name %}Feiertag
                         {% else %}–{% endif %}
                     </td>
-                    <td class="text-end">
-                        {% if d.show_values and not d.pending %}{{ d.ist|floatformat:2 }}h{% endif %}
-                    </td>
-                    <td class="text-end">
-                        {% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% endif %}
-                    </td>
-                    <td class="text-end {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}">
-                        {% if d.pending %}–{% elif d.show_values %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}
-                    </td>
-                    <td>
+                    {# einzeilig ohne Leerraum, damit leere Zellen mobil per :empty entfallen #}
+                    <td class="text-end tt-inline" data-label="Ist">{% if d.show_values and not d.pending %}{{ d.ist|floatformat:2 }}h{% endif %}</td>
+                    <td class="text-end tt-inline" data-label="Soll">{% if d.is_soll %}{{ d.soll|floatformat:2 }}h{% endif %}</td>
+                    <td class="text-end {% if d.show_values and not d.pending %}{% if d.diff >= 0 %}text-success{% else %}text-danger{% endif %}{% endif %}" data-label="Diff">{% if d.pending %}–{% elif d.show_values %}{% if d.diff >= 0 %}+{% endif %}{{ d.diff|floatformat:2 }}h{% endif %}</td>
+                    <td class="tt-actions">
                         {% if d.entry %}
                         <a href="{% url 'timetracking:entry_edit' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Bearbeiten" aria-label="Eintrag bearbeiten">✎</a>
                         <a href="{% url 'timetracking:entry_delete' d.entry.pk %}?next={{ request.get_full_path|urlencode }}" class="btn btn-sm btn-outline-danger py-0 px-2" title="Löschen" aria-label="Eintrag löschen">×</a>

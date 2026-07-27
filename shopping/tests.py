@@ -70,3 +70,12 @@ class ShoppingViewTest(TestCase):
         self.assertRedirects(
             response, "/accounts/login/?next=/shopping/", fetch_redirect_response=False
         )
+
+    def test_grid_column_class_stays_col_md_6(self):
+        """Das Inline-JS in shopping_list.html selektiert
+        '#shopping-list > .col-md-6' und '.closest(".col-md-6")'. Wird die
+        Spaltenklasse beim Mobile-Umbau ersetzt, brechen Filter,
+        Gekauft-Toggle und Löschen still.
+        """
+        self._create_item()
+        self.assertContains(self.client.get("/shopping/"), 'class="col-md-6"')

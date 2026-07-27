@@ -15,6 +15,45 @@
         }
         body { background: white; }
     </style>
+    {% if not pdf_mode %}
+    <style>
+        /* Tabellen als Karten unter 768px. Bewusst nur in der HTML-Ansicht:
+           WeasyPrint verwirft @media (max-width:…) ohnehin, loggt dabei aber
+           pro Regel zwei Warnungen ins Deploy-Log. */
+        @media (max-width: 767.98px) {
+            /* report.html laedt styles.css nicht (eigenstaendiges Dokument),
+               deshalb hier eigene Tap-Flaechen. */
+            .btn { display: inline-flex; align-items: center; justify-content: center;
+                   min-height: 44px; min-width: 44px; }
+            .form-control, .form-select, input, select { min-height: 44px; font-size: 16px; }
+
+            .tt-stack, .tt-stack tbody, .tt-stack tfoot,
+            .tt-stack tr, .tt-stack td { display: block; width: auto; }
+            .tt-stack thead { display: none; }
+            .tt-stack tr { padding: .5rem .25rem; border-bottom: 1px solid #dee2e6; }
+            .tt-stack td {
+                padding: 0 !important;
+                border: 0 !important;
+                text-align: left !important;
+            }
+            .tt-stack td.tt-day { font-weight: 600; }
+            .tt-stack td.tt-type { font-size: .85rem; color: #6c757d; }
+            .tt-stack td[data-label]::before {
+                content: attr(data-label) " ";
+                font-weight: 400;
+                color: #6c757d;
+            }
+            .tt-stack td.tt-inline { display: inline-block; }
+            .tt-stack td.tt-inline + td.tt-inline { margin-left: .4rem; }
+            /* \00a0: ein normales Leerzeichen nach der Escape-Sequenz
+               wuerde als deren Abschluss verschluckt */
+            .tt-stack td.tt-inline + td.tt-inline::before {
+                content: "\00b7\00a0" attr(data-label) " ";
+                color: #6c757d;
+            }
+        }
+    </style>
+    {% endif %}
     {% if pdf_mode %}
     <style>
         .no-print { display: none !important; }
@@ -39,7 +78,7 @@
             {% if profile.user.email %}
             <form method="post" action="{% url 'timetracking:report_email' %}?von={{ start|date:'Y-m-d' }}&bis={{ end|date:'Y-m-d' }}" class="d-inline">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-outline-primary btn-sm">Per E-Mail an {{ profile.user.email }}</button>
+                <button type="submit" class="btn btn-outline-primary btn-sm text-break">Per E-Mail an {{ profile.user.email }}</button>
             </form>
             {% else %}
             <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Keine E-Mail-Adresse hinterlegt">Per E-Mail senden</button>
@@ -57,15 +96,15 @@
                     {% endfor %}
                 </div>
                 <form method="get" class="row g-2 align-items-end">
-                    <div class="col-auto">
+                    <div class="col-12 col-md-auto">
                         <label for="{{ form.von.id_for_label }}" class="form-label mb-1 small">{{ form.von.label }}</label>
                         {{ form.von }}
                     </div>
-                    <div class="col-auto">
+                    <div class="col-12 col-md-auto">
                         <label for="{{ form.bis.id_for_label }}" class="form-label mb-1 small">{{ form.bis.label }}</label>
                         {{ form.bis }}
                     </div>
-                    <div class="col-auto">
+                    <div class="col-12 col-md-auto">
                         <button type="submit" class="btn btn-outline-primary">Anzeigen</button>
                     </div>
                 </form>
@@ -131,7 +170,7 @@
     </table>
 
     <h5 class="mb-2">Wochenübersicht</h5>
-    <table class="table table-bordered table-sm mb-4">
+    <table class="table table-bordered table-sm mb-4 tt-stack">
         <thead class="table-light">
             <tr>
                 <th>KW</th>
@@ -144,11 +183,11 @@
         <tbody>
         {% for w in week_rows %}
         <tr>
-            <td>{{ w.iso_week }}</td>
-            <td>{{ w.week_start|date:"d.m." }}–{{ w.week_end|date:"d.m.Y" }}</td>
-            <td class="text-end">{{ w.soll|floatformat:2 }}h</td>
-            <td class="text-end">{{ w.ist|floatformat:2 }}h</td>
-            <td class="text-end fw-bold {% if w.saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+            <td class="tt-day" data-label="KW">{{ w.iso_week }}</td>
+            <td class="tt-type">{{ w.week_start|date:"d.m." }}–{{ w.week_end|date:"d.m.Y" }}</td>
+            <td class="text-end tt-inline" data-label="Soll">{{ w.soll|floatformat:2 }}h</td>
+            <td class="text-end tt-inline" data-label="Ist">{{ w.ist|floatformat:2 }}h</td>
+            <td class="text-end fw-bold {% if w.saldo >= 0 %}text-success{% else %}text-danger{% endif %}" data-label="Saldo">
                 {% if w.saldo >= 0 %}+{% endif %}{{ w.saldo|floatformat:2 }}h
             </td>
         </tr>
@@ -156,10 +195,10 @@
         </tbody>
         <tfoot class="table-light fw-bold">
             <tr>
-                <td colspan="2">Gesamt</td>
-                <td class="text-end">{{ range_soll|floatformat:2 }}h</td>
-                <td class="text-end">{{ range_ist|floatformat:2 }}h</td>
-                <td class="text-end {% if range_saldo >= 0 %}text-success{% else %}text-danger{% endif %}">
+                <td colspan="2" class="tt-day">Gesamt</td>
+                <td class="text-end tt-inline" data-label="Soll">{{ range_soll|floatformat:2 }}h</td>
+                <td class="text-end tt-inline" data-label="Ist">{{ range_ist|floatformat:2 }}h</td>
+                <td class="text-end {% if range_saldo >= 0 %}text-success{% else %}text-danger{% endif %}" data-label="Saldo">
                     {% if range_saldo >= 0 %}+{% endif %}{{ range_saldo|floatformat:2 }}h
                 </td>
             </tr>
@@ -167,7 +206,7 @@
     </table>
 
     <h5 class="mb-2">Tagesdetails</h5>
-    <table class="table table-bordered table-sm">
+    <table class="table table-bordered table-sm tt-stack">
         <thead class="table-light">
             <tr>
                 <th>Datum</th>
@@ -182,16 +221,16 @@
         {% for d in days_data %}
         {% if not d.is_weekend or d.entry %}
         <tr class="{% if d.holiday_name %}table-secondary{% endif %}">
-            <td>{{ d.day|date:"D, d.m.Y" }}</td>
-            <td>
+            <td class="tt-day">{{ d.day|date:"D, d.m.Y" }}</td>
+            <td class="tt-type">
                 {% if d.entry %}{{ d.entry.get_entry_type_display }}{% if d.holiday_name %} (Feiertag){% elif d.is_weekend %} (Wochenende){% endif %}
                 {% elif d.holiday_name %}Feiertag ({{ d.holiday_name }})
                 {% else %}–{% endif %}
             </td>
-            <td class="text-end">{% if d.entry and d.entry.start_time %}{{ d.entry.start_time|time:"H:i" }}{% else %}–{% endif %}</td>
-            <td class="text-end">{% if d.entry and d.entry.end_time %}{{ d.entry.end_time|time:"H:i" }}{% else %}–{% endif %}</td>
-            <td class="text-end">{% if d.entry and d.entry.break_minutes %}{{ d.entry.break_minutes }}min{% else %}–{% endif %}</td>
-            <td class="text-end">{% if d.ist %}{{ d.ist|floatformat:2 }}h{% else %}–{% endif %}</td>
+            <td class="text-end tt-inline" data-label="Beginn">{% if d.entry and d.entry.start_time %}{{ d.entry.start_time|time:"H:i" }}{% else %}–{% endif %}</td>
+            <td class="text-end tt-inline" data-label="Ende">{% if d.entry and d.entry.end_time %}{{ d.entry.end_time|time:"H:i" }}{% else %}–{% endif %}</td>
+            <td class="text-end tt-inline" data-label="Pause">{% if d.entry and d.entry.break_minutes %}{{ d.entry.break_minutes }}min{% else %}–{% endif %}</td>
+            <td class="text-end tt-inline" data-label="Stunden">{% if d.ist %}{{ d.ist|floatformat:2 }}h{% else %}–{% endif %}</td>
         </tr>
         {% endif %}
         {% endfor %}

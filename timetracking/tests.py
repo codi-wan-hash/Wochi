@@ -688,6 +688,30 @@ class ReportPDFTest(TestCase):
             fetch_redirect_response=False,
         )
 
+    def test_mobile_css_never_reaches_pdf_render(self):
+        """Die Karten-Styles dürfen nur in der HTML-Ansicht landen.
+
+        report.html wird für Ansicht und PDF benutzt. WeasyPrint verwirft
+        Breiten-Media-Queries zwar, loggt dabei aber pro Regel Warnungen -
+        und ein künftiges WeasyPrint könnte sie auswerten und damit das
+        PDF-Layout zerlegen. Der {% if not pdf_mode %}-Guard ist die einzige
+        Absicherung dagegen.
+        """
+        from django.template.loader import render_to_string
+        from timetracking.periods import today_local
+        from timetracking.views import _report_context
+
+        html_response = self.client.get("/timetracking/bericht/" + self.MAY)
+        self.assertContains(html_response, "max-width: 767.98px")
+
+        context = _report_context(
+            self.user.userprofile, date(2026, 5, 1), date(2026, 5, 31), today_local()
+        )
+        pdf_html = render_to_string(
+            "timetracking/report.html", {**context, "pdf_mode": True}
+        )
+        self.assertNotIn("max-width: 767.98px", pdf_html)
+
 
 class WeekendHolidayFormValidationTest(TestCase):
     def setUp(self):
