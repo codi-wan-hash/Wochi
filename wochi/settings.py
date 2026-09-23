@@ -25,12 +25,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-8!)sns8u35&knysh$i5(ljkbh&ujv-!dv7^hjr)^p)5w3jwacx'
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-only-for-local")
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
 if not DEBUG and not os.environ.get("SECRET_KEY"):
     raise ValueError("SECRET_KEY environment variable must be set in production.")
+
+# Werte, die öffentlich im Repository stehen (oder standen). Mit einem davon
+# könnte jeder Sitzungen und App-Tokens fälschen. accounts/checks.py warnt
+# beim Start, statt den Start zu verweigern – ein harter Abbruch würde sonst
+# ein laufendes Deployment unbemerkt lahmlegen.
+KNOWN_INSECURE_SECRET_KEYS = {
+    "dev-secret-key-only-for-local",
+    "dev-secret-key",
+    "bitte-einen-langen-zufaelligen-wert-setzen",
+}
 
 ALLOWED_HOSTS = os.environ.get(
     "ALLOWED_HOSTS", "localhost,127.0.0.1"
@@ -142,11 +151,27 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Django 6 ignoriert STATICFILES_STORAGE; ohne STORAGES liefen die
+# Static-Files bisher ohne Hash im Namen und ohne Kompression aus.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+# Fehlt ein Eintrag im Manifest (Tests, vergessenes collectstatic), wird der
+# ungehashte Pfad ausgeliefert statt die ganze Seite mit 500 abzubrechen.
+WHITENOISE_MANIFEST_STRICT = False
 LOGIN_REDIRECT_URL = "home"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 LOGOUT_REDIRECT_URL = "login"
+
+# Anmeldung mit Benutzername oder E-Mail, unabhängig von Groß-/Kleinschreibung.
+AUTHENTICATION_BACKENDS = ["accounts.backends.UsernameOrEmailBackend"]
+
+from django.contrib.messages import constants as message_constants
+
+# Bootstrap kennt keine Klasse "alert-error"; Fehlermeldungen waren nicht rot.
+MESSAGE_TAGS = {message_constants.ERROR: "danger"}
 
 import cloudinary
 cloudinary.config(cloudinary_url=CLOUDINARY_URL)
@@ -169,7 +194,7 @@ if not DEBUG:
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.authentication.WochiiJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -183,13 +208,30 @@ REST_FRAMEWORK = {
         "anon": "20/minute",
         "user": "300/minute",
         "auth": "5/minute",
+        "refresh": "30/minute",
+        "password_reset": "5/hour",
+        "ai": "20/hour",
     },
+    # Hinter genau einem Reverse-Proxy: für die IP-basierte Drosselung zählt
+    # die letzte (vom Proxy gesetzte) Adresse in X-Forwarded-For, nicht die
+    # erste, die der Client frei wählen kann.
+    "NUM_PROXIES": int(os.environ.get("NUM_PROXIES", "1")),
 }
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    # Kurzlebige Access-Tokens; die App erneuert sie im Hintergrund.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    # Gleitende Anmeldung: jeder Refresh liefert ein neues Refresh-Token.
+    # Wer die App regelmäßig nutzt, bleibt angemeldet; nach 60 Tagen ohne
+    # Nutzung ist eine neue Anmeldung nötig. Widerruf bei Passwortwechsel:
+    # siehe api/authentication.py.
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=60),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "SIGNING_KEY": os.environ.get("JWT_SIGNING_KEY") or SECRET_KEY,
+    "TOKEN_OBTAIN_SERIALIZER": "api.authentication.WochiiTokenObtainPairSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "api.authentication.WochiiTokenRefreshSerializer",
 }
 
 _cors_default = "http://localhost:8081,http://localhost:19006" if DEBUG else ""
@@ -210,3 +252,13 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@wochii.de")
 # Gültigkeit der Links zum Zurücksetzen des Passworts (24 Stunden), passend
 # zur Frist der E-Mail-Bestätigung im Profil.
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
+
+# Fehler aus logger.exception(...) landen im Container-Log (gunicorn stderr).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    # 4xx sind normale Nutzerfehler; nur echte Serverfehler (5xx) loggen.
+    "loggers": {"django.request": {"level": "ERROR"}},
+}

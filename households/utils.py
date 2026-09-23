@@ -42,9 +42,47 @@ def _format_qty(number, unit):
 
 
 def get_current_household(user):
-    if user.is_authenticated:
-        return user.households.first()
-    return None
+    """Der aktive Haushalt des Benutzers – Grundlage jeder Datenabfrage.
+
+    Hat der Benutzer einen Haushalt ausgewählt und ist dort noch Mitglied,
+    gilt dieser, sonst der älteste seiner Haushalte.
+    """
+    if not user.is_authenticated:
+        return None
+    from .models import HouseholdSelection
+
+    selection = (
+        HouseholdSelection.objects.filter(user=user, household__members=user)
+        .select_related("household")
+        .first()
+    )
+    if selection:
+        return selection.household
+    return user.households.order_by("pk").first()
+
+
+def set_current_household(user, household):
+    """Macht household zum aktiven Haushalt (Mitgliedschaft prüft der Aufrufer)."""
+    from .models import HouseholdSelection
+
+    HouseholdSelection.objects.update_or_create(user=user, defaults={"household": household})
+
+
+def leave_household(user, household):
+    """Mitgliedschaft beenden.
+
+    Ist danach niemand mehr Mitglied, wird der Haushalt mit allen Daten
+    gelöscht – verwaiste Haushalte wären Datenmüll, den niemand mehr sieht.
+    Gibt True zurück, wenn der Haushalt gelöscht wurde.
+    """
+    from .models import HouseholdSelection
+
+    household.members.remove(user)
+    HouseholdSelection.objects.filter(user=user, household=household).delete()
+    if not household.members.exists():
+        household.delete()
+        return True
+    return False
 
 
 def parse_quantity(q):

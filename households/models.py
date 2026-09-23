@@ -15,3 +15,23 @@ class Household(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class HouseholdSelection(models.Model):
+    """Welcher Haushalt für einen Benutzer gerade aktiv ist.
+
+    Wer in mehreren Haushalten Mitglied ist (z. B. nach dem Beitritt per
+    Einladungslink), kann so zwischen ihnen wechseln. Ohne Eintrag gilt der
+    älteste Haushalt, wie bisher.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="household_selection",
+    )
+    household = models.ForeignKey(Household, on_delete=models.CASCADE, related_name="+")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user} → {self.household}"

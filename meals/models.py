@@ -8,9 +8,13 @@ class Recipe(models.Model):
     title = models.CharField(max_length=200)
     notes = models.TextField(blank=True)
     instructions = models.TextField(blank=True)
+    # SET_NULL statt CASCADE: löscht jemand sein Konto, bleiben seine Rezepte
+    # (und damit der Essensplan) für den restlichen Haushalt erhalten.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="created_recipes"
     )
     image = models.URLField(blank=True, default='')

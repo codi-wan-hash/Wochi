@@ -33,9 +33,13 @@ class Task(models.Model):
         blank=True,
         related_name="assigned_tasks"
     )
+    # SET_NULL statt CASCADE: löscht jemand sein Konto, bleiben seine
+    # Aufgaben für den restlichen Haushalt erhalten.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="created_tasks"
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -57,5 +61,48 @@ class Task(models.Model):
             day = min(d.day, calendar.monthrange(year, month)[1])
             return d.replace(year=year, month=month, day=day)
         return None
+
+    def toggle(self, user=None):
+        """Offen <-> erledigt umschalten (Web und API nutzen dieselbe Logik)."""
+        return self.set_status("done" if self.status == "open" else "open", user)
+
+    def set_status(self, status, user=None):
+        """Status setzen. Wird eine wiederkehrende Aufgabe erledigt, entsteht
+        die nächste Aufgabe. Gibt diese Folgeaufgabe zurück (sonst None)."""
+        was_open = self.status == "open"
+        self.status = status
+        self.save(update_fields=["status"])
+        if was_open and status == "done":
+            return self.create_next_occurrence(user)
+        return None
+
+    def create_next_occurrence(self, user=None):
+        """Folgeaufgabe anlegen – aber nur einmal.
+
+        Wer eine erledigte Aufgabe versehentlich wieder öffnet und erneut
+        abhakt, soll keine zweite Folgeaufgabe bekommen.
+        """
+        next_due = self.next_due_date()
+        if not next_due:
+            return None
+        existing = Task.objects.filter(
+            household=self.household,
+            title=self.title,
+            recurrence=self.recurrence,
+            due_date=next_due,
+        ).first()
+        if existing:
+            return existing
+        new_task = Task.objects.create(
+            household=self.household,
+            title=self.title,
+            description=self.description,
+            due_date=next_due,
+            priority=self.priority,
+            recurrence=self.recurrence,
+            created_by=user or self.created_by,
+        )
+        new_task.assigned_to.set(self.assigned_to.all())
+        return new_task
 
 
