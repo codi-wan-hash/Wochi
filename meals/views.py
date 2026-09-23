@@ -1,39 +1,82 @@
 import json
-import os
-from datetime import timedelta, datetime
+import logging
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from openai import OpenAI, RateLimitError
-
-from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions, merge_quantities, parse_quantity, _format_qty
+from households.utils import get_current_household, get_item_suggestions, get_quantity_suggestions
 from shopping.models import ShoppingItem
+from shopping.services import add_ingredients, merge_quantity_text
+from .ai import QUOTA_MESSAGE, ai_quota_available, openai_client
 from .models import MealPlan, Recipe, Ingredient
-from .forms import MealPlanForm, RecipeForm, IngredientForm
+from .forms import MealPlanForm, RecipeForm, IngredientForm, IngredientQuantityForm
+from .utils import (
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_RECIPE_INGREDIENTS,
+    clean_ingredient_list,
+    cloudinary_thumbnail,
+    get_ingredient_autocomplete,
+    planning_range,
+    scale_quantity,
+)
+
+logger = logging.getLogger(__name__)
 
 MAX_INGREDIENTS = 30
 MAX_PORTIONS = 50
+# Die Eingaben des KI-Generators landen im Prompt. Ohne Grenzen ließe sich ein
+# Prompt mit Megabytes Text erzeugen (Kosten, Timeouts).
+MAX_INGREDIENT_LENGTH = 60
+ALLOWED_FILTERS = ("vegetarisch", "vegan", "glutenfrei", "schnell")
+MAX_TITLE_COLLISION_ATTEMPTS = 100
+MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# Fehlermeldungen für die Nutzer. Technische Details (Exception-Texte können
+# Interna wie URLs oder Schlüssel enthalten) landen nur im Log.
+AI_NOT_CONFIGURED_MESSAGE = "Die KI ist auf diesem Server nicht eingerichtet."
+AI_FAILED_MESSAGE = "Die KI hat gerade nicht geantwortet. Bitte später noch einmal versuchen."
+AI_UNUSABLE_MESSAGE = "KI-Antwort unbrauchbar, bitte erneut versuchen."
+IMAGE_STORAGE_MISSING_MESSAGE = "Bilder können auf diesem Server nicht gespeichert werden."
+IMAGE_GENERATION_FAILED_MESSAGE = "Das Bild konnte nicht erstellt werden. Bitte später noch einmal versuchen."
+IMAGE_UPLOAD_FAILED_MESSAGE = "Das Bild konnte nicht gespeichert werden. Bitte später noch einmal versuchen."
+CONCURRENT_SAVE_MESSAGE = "Das wurde gerade gleichzeitig geändert. Bitte die Eingaben prüfen und erneut speichern."
 
 
 def get_week_dates():
-    today = timezone.localdate()
-    start_of_week = today - timedelta(days=today.weekday()) # monday
-    end_of_next_week = start_of_week + timedelta(days=13) # sunday next week
+    start, end = planning_range()
+    return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
-    week_dates = []
-    current_day = today
-    
-    while current_day <= end_of_next_week:
-        week_dates.append(current_day)
-        current_day += timedelta(days=1)
 
-    return week_dates
+def _save_form(form):
+    """form.save(), ohne dass ein paralleles Doppel-Absenden in HTTP 500 endet.
+
+    clean() prüft die Eindeutigkeit. Zwei gleichzeitige Requests (Doppeltipp auf
+    dem Handy) kommen aber beide durch die Prüfung, und der zweite scheitert an
+    der Datenbank. Dann gibt es None und eine Meldung am Formular.
+    """
+    try:
+        with transaction.atomic():
+            return form.save()
+    except IntegrityError:
+        form.add_error(None, CONCURRENT_SAVE_MESSAGE)
+        return None
+
+
+def _first_error(form):
+    """Erste Fehlermeldung eines Formulars – für die JSON-Antworten der Seiten-Skripte."""
+    for field, errors in form.errors.items():
+        label = form.fields[field].label if field in form.fields else None
+        return f"{label}: {errors[0]}" if label else errors[0]
+    return "Ungültige Eingabe."
 
 
 @login_required
@@ -44,13 +87,16 @@ def meal_list(request):
         return redirect("choose_household")
 
     week_dates = get_week_dates()
-    meals = MealPlan.objects.filter(household=household, date__in=week_dates)
+    today, plan_end = week_dates[0], week_dates[-1]
+    meals = list(
+        MealPlan.objects.filter(household=household, date__range=(today, plan_end))
+        .select_related("recipe", "assigned_to")
+    )
 
     meals_by_day = {day: {"lunch": None, "dinner": None} for day in week_dates}
     for meal in meals:
         meals_by_day[meal.date][meal.meal_type] = meal
 
-    today = timezone.localdate()
     start_of_next_week = today - timedelta(days=today.weekday()) + timedelta(days=7)
 
     week_plan = []
@@ -60,12 +106,26 @@ def meal_list(request):
             "lunch": meals_by_day[day]["lunch"],
             "dinner": meals_by_day[day]["dinner"],
             "is_next_week_start": day == start_of_next_week,
+            "is_today": day == today,
+            "is_weekend": day.weekday() >= 5,
         })
 
     return render(request, "meals/meal_list.html", {
         "household": household,
         "week_plan": week_plan,
+        # Für die Rückfrage vor "Zutaten → Einkaufsliste" (gleicher Zeitraum).
+        "planned_meal_count": len(meals),
+        "plan_end": plan_end,
     })
+
+
+def _meal_form_context(form, household, title):
+    return {
+        "form": form,
+        "title": title,
+        # Vorschläge für das Gericht-Feld; ohne Gerichte bleibt die Liste leer.
+        "recipe_titles": Recipe.objects.filter(household=household).values_list("title", flat=True),
+    }
 
 
 @login_required
@@ -76,17 +136,18 @@ def meal_create(request):
         return redirect("choose_household")
 
     if request.method == "POST":
-        form = MealPlanForm(request.POST, household=household)
+        form = MealPlanForm(request.POST, household=household, user=request.user)
         if form.is_valid():
-            meal = form.save(commit=False)
-            meal.household = household
-            meal.save()
-            messages.success(request, f'„{meal.recipe.title}“ wurde eingeplant.')
-            return redirect("meal_list")
+            meal = _save_form(form)
+            if meal:
+                if form.created_recipe:
+                    messages.success(request, f'„{meal.recipe.title}“ wurde eingeplant und als neues Gericht gespeichert.')
+                else:
+                    messages.success(request, f'„{meal.recipe.title}“ wurde eingeplant.')
+                return redirect("meal_list")
     else:
-        from datetime import date as date_type
         try:
-            prefill_date = date_type.fromisoformat(request.GET.get("date", ""))
+            prefill_date = date.fromisoformat(request.GET.get("date", ""))
         except ValueError:
             prefill_date = None
         form = MealPlanForm(
@@ -94,33 +155,27 @@ def meal_create(request):
                 "date": prefill_date,
                 "meal_type": request.GET.get("meal_type"),
             },
-            household=household
+            household=household,
+            user=request.user,
         )
 
-    return render(request, "meals/meal_form.html", {
-        "form": form,
-        "title": "Neue Mahlzeit planen",
-    })
+    return render(request, "meals/meal_form.html", _meal_form_context(form, household, "Neue Mahlzeit planen"))
 
 
 @login_required
 def meal_update(request, pk):
     household = get_current_household(request.user)
-    meal = get_object_or_404(MealPlan, pk=pk, household=household)
+    meal = get_object_or_404(MealPlan.objects.select_related("recipe"), pk=pk, household=household)
 
     if request.method == "POST":
-        form = MealPlanForm(request.POST, instance=meal, household=household)
-        if form.is_valid():
-            form.save()
+        form = MealPlanForm(request.POST, instance=meal, household=household, user=request.user)
+        if form.is_valid() and _save_form(form):
             messages.success(request, "Mahlzeit aktualisiert.")
             return redirect("meal_list")
     else:
-        form = MealPlanForm(instance=meal, household=household)
+        form = MealPlanForm(instance=meal, household=household, user=request.user)
 
-    return render(request, "meals/meal_form.html", {
-        "form": form,
-        "title": "Mahlzeit bearbeiten",
-    })
+    return render(request, "meals/meal_form.html", _meal_form_context(form, household, "Mahlzeit bearbeiten"))
 
 
 @login_required
@@ -165,6 +220,9 @@ def meal_history(request):
             "date": current,
             "lunch": meals_by_date.get(current, {}).get("lunch"),
             "dinner": meals_by_date.get(current, {}).get("dinner"),
+            # Die Historie endet gestern; "heute" kommt hier nie vor.
+            "is_yesterday": current == date_to,
+            "is_weekend": current.weekday() >= 5,
         })
         current -= timedelta(days=1)
 
@@ -181,7 +239,7 @@ def recipe_list(request):
     if not household:
         return redirect("choose_household")
 
-    recipes = Recipe.objects.filter(household=household)
+    recipes = Recipe.objects.filter(household=household).select_related("created_by")
 
     return render(request, "meals/recipe_list.html", {
         "household": household,
@@ -197,16 +255,16 @@ def recipe_create(request):
         return redirect("choose_household")
 
     if request.method == "POST":
-        form = RecipeForm(request.POST)
+        form = RecipeForm(request.POST, household=household)
+        form.instance.created_by = request.user
         if form.is_valid():
-            recipe = form.save(commit=False)
-            recipe.household = household
-            recipe.created_by = request.user
-            recipe.save()
-            messages.success(request, f'Gericht „{recipe.title}“ wurde angelegt.')
-            return redirect("recipe_list")
+            recipe = _save_form(form)
+            if recipe:
+                messages.success(request, f'Gericht „{recipe.title}“ wurde angelegt.')
+                # Als Nächstes kommen Zutaten und Zubereitung – die stehen auf der Detailseite.
+                return redirect("recipe_detail", pk=recipe.pk)
     else:
-        form = RecipeForm()
+        form = RecipeForm(household=household)
 
     return render(request, "meals/recipe_form.html", {
         "form": form,
@@ -220,13 +278,12 @@ def recipe_update(request, pk):
     recipe = get_object_or_404(Recipe, pk=pk, household=household)
 
     if request.method == "POST":
-        form = RecipeForm(request.POST, instance=recipe)
-        if form.is_valid():
-            form.save()
+        form = RecipeForm(request.POST, instance=recipe, household=household)
+        if form.is_valid() and _save_form(form):
             messages.success(request, "Gericht aktualisiert.")
             return redirect("recipe_list")
     else:
-        form = RecipeForm(instance=recipe)
+        form = RecipeForm(instance=recipe, household=household)
 
     return render(request, "meals/recipe_form.html", {
         "form": form,
@@ -241,11 +298,25 @@ def recipe_delete(request, pk):
     recipe = get_object_or_404(Recipe, pk=pk, household=household)
 
     if request.method == "POST":
-        recipe.delete()
-        messages.success(request, "Gericht gelöscht.")
+        _, deleted = recipe.delete()
+        removed_meals = deleted.get(MealPlan._meta.label, 0)
+        if removed_meals:
+            plural = "en" if removed_meals != 1 else ""
+            messages.success(request, f"Gericht gelöscht, dazu {removed_meals} geplante Mahlzeit{plural}.")
+        else:
+            messages.success(request, "Gericht gelöscht.")
         return redirect("recipe_list")
 
-    return render(request, "meals/recipe_confirm_delete.html", {"recipe": recipe})
+    # MealPlan.recipe löscht per CASCADE mit – das muss vor dem Bestätigen sichtbar sein.
+    counts = recipe.planned_meals.aggregate(
+        total=Count("pk"),
+        upcoming=Count("pk", filter=Q(date__gte=timezone.localdate())),
+    )
+    return render(request, "meals/recipe_confirm_delete.html", {
+        "recipe": recipe,
+        "planned_meal_count": counts["total"],
+        "upcoming_meal_count": counts["upcoming"],
+    })
 
 
 @login_required
@@ -261,10 +332,23 @@ def recipe_detail(request, pk):
     })
 
 
+def _ingredient_json(ingredient):
+    """Zutat für die Seiten-Skripte, inkl. der URLs für ihre Aktionen."""
+    return {
+        "id": ingredient.pk,
+        "name": ingredient.name,
+        "quantity": ingredient.quantity,
+        "scale_url": reverse("ingredient_scale", args=[ingredient.pk]),
+        "shopping_url": reverse("ingredient_to_shopping", args=[ingredient.pk]),
+        "delete_url": reverse("ingredient_delete", args=[ingredient.pk]),
+    }
+
+
 @login_required
 def ingredient_add(request, pk):
     household = get_current_household(request.user)
     recipe = get_object_or_404(Recipe, pk=pk, household=household)
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if request.method == "POST":
         form = IngredientForm(request.POST)
@@ -273,7 +357,7 @@ def ingredient_add(request, pk):
             quantity = form.cleaned_data["quantity"].strip()
             existing = recipe.ingredients.filter(name__iexact=name).first()
             if existing:
-                existing.quantity = merge_quantities(existing.quantity, quantity)
+                existing.quantity = merge_quantity_text(existing.quantity, quantity)
                 existing.save()
                 ingredient = existing
                 merged = True
@@ -282,13 +366,10 @@ def ingredient_add(request, pk):
                 ingredient.recipe = recipe
                 ingredient.save()
                 merged = False
-            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-                return JsonResponse({
-                    "id": ingredient.pk,
-                    "name": ingredient.name,
-                    "quantity": ingredient.quantity,
-                    "merged": merged,
-                })
+            if is_ajax:
+                return JsonResponse({**_ingredient_json(ingredient), "merged": merged})
+        elif is_ajax:
+            return JsonResponse({"error": _first_error(form)}, status=400)
     return redirect("recipe_detail", pk=pk)
 
 
@@ -305,36 +386,35 @@ def ingredient_delete(request, pk):
 
 
 @login_required
+@require_POST
 def ingredient_scale(request, pk):
+    """Menge einer Zutat ändern; mit scale_all=1 alle Mengen im gleichen Verhältnis."""
     household = get_current_household(request.user)
-    ingredient = get_object_or_404(Ingredient, pk=pk, recipe__household=household)
+    ingredient = get_object_or_404(
+        Ingredient.objects.select_related("recipe"), pk=pk, recipe__household=household
+    )
 
-    if request.method == "POST":
-        new_quantity = request.POST.get("quantity", "").strip()
-        old_quantity = ingredient.quantity
+    form = IngredientQuantityForm(request.POST, instance=ingredient)
+    if not form.is_valid():
+        return JsonResponse({"error": _first_error(form)}, status=400)
 
-        p_old = parse_quantity(old_quantity)
-        p_new = parse_quantity(new_quantity)
+    with transaction.atomic():
+        ingredient = form.save()
+        updated = [ingredient]
+        if form.factor is not None:
+            scaled = []
+            for other in ingredient.recipe.ingredients.exclude(pk=ingredient.pk):
+                new_quantity = scale_quantity(other.quantity, form.factor)
+                if new_quantity is not None and new_quantity != other.quantity:
+                    other.quantity = new_quantity
+                    scaled.append(other)
+            Ingredient.objects.bulk_update(scaled, ["quantity"])
+            updated += scaled
 
-        ingredient.quantity = new_quantity
-        ingredient.save()
-
-        updated = [{"id": ingredient.pk, "quantity": new_quantity}]
-
-        if p_old and p_new and p_old[0] > 0:
-            ratio = p_new[0] / p_old[0]
-            for ing in ingredient.recipe.ingredients.exclude(pk=ingredient.pk):
-                p = parse_quantity(ing.quantity)
-                if p:
-                    scaled = p[0] * ratio
-                    scaled = int(scaled) if scaled == int(scaled) else round(scaled, 2)
-                    ing.quantity = _format_qty(scaled, p[1])
-                    ing.save()
-                updated.append({"id": ing.pk, "quantity": ing.quantity})
-
-        return JsonResponse({"status": "scaled", "ingredients": updated})
-
-    return JsonResponse({"error": "invalid"}, status=400)
+    return JsonResponse({
+        "status": "scaled" if form.factor is not None else "updated",
+        "ingredients": [{"id": ing.pk, "quantity": ing.quantity} for ing in updated],
+    })
 
 
 @login_required
@@ -356,6 +436,7 @@ def ingredient_to_shopping(request, pk):
                 "existing_quantity": existing.quantity,
                 "new_quantity": ingredient.quantity,
                 "name": ingredient.name,
+                "merge_url": reverse("shopping_merge_quantity", args=[existing.pk]),
             })
 
         ShoppingItem.objects.create(
@@ -377,23 +458,10 @@ def recipe_all_to_shopping(request, pk):
     if request.method != "POST":
         return redirect("recipe_detail", pk=pk)
 
-    added, merged = 0, 0
-    for ingredient in recipe.ingredients.all():
-        existing = ShoppingItem.objects.filter(
-            household=household, name__iexact=ingredient.name, is_bought=False
-        ).first()
-        if existing:
-            existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
-            existing.save()
-            merged += 1
-        else:
-            ShoppingItem.objects.create(
-                household=household,
-                name=ingredient.name,
-                quantity=ingredient.quantity,
-                added_by=request.user,
-            )
-            added += 1
+    with transaction.atomic():
+        added, merged = add_ingredients(
+            household, request.user, recipe.ingredients.values_list("name", "quantity")
+        )
     return JsonResponse({"added": added, "merged": merged})
 
 
@@ -406,50 +474,54 @@ def meals_week_to_shopping(request):
     if request.method != "POST":
         return redirect("meal_list")
 
-    from datetime import date, timedelta
-    today = date.today()
-    monday = today - timedelta(days=(today.weekday()))
-    date_from = monday
-    date_to = monday + timedelta(days=13)
-
-    meals = MealPlan.objects.filter(
-        household=household, date__gte=date_from, date__lte=date_to,
-    ).select_related("recipe").prefetch_related("recipe__ingredients")
-
-    added, merged = 0, 0
-    for meal in meals:
-        for ingredient in meal.recipe.ingredients.all():
-            existing = ShoppingItem.objects.filter(
-                household=household, name__iexact=ingredient.name, is_bought=False
-            ).first()
-            if existing:
-                existing.quantity = merge_quantities(existing.quantity, ingredient.quantity)
-                existing.save()
-                merged += 1
-            else:
-                ShoppingItem.objects.create(
-                    household=household,
-                    name=ingredient.name,
-                    quantity=ingredient.quantity,
-                    added_by=request.user,
-                )
-                added += 1
-    return JsonResponse({"added": added, "merged": merged})
+    # Gleicher Zeitraum wie die Planungsansicht: heute bis Sonntag nächster
+    # Woche. Schon gegessene Tage gehören nicht mehr auf die Einkaufsliste.
+    date_from, date_to = planning_range()
+    meals = list(
+        MealPlan.objects.filter(household=household, date__range=(date_from, date_to))
+        .select_related("recipe")
+        .prefetch_related("recipe__ingredients")
+    )
+    ingredients = [
+        (ingredient.name, ingredient.quantity)
+        for meal in meals
+        for ingredient in meal.recipe.ingredients.all()
+    ]
+    with transaction.atomic():
+        added, merged = add_ingredients(household, request.user, ingredients)
+    return JsonResponse({"added": added, "merged": merged, "meals": len(meals)})
 
 
-@login_required
-def shopping_merge_quantity(request, pk):
-    household = get_current_household(request.user)
-    item = get_object_or_404(ShoppingItem, pk=pk, household=household)
+def _ask_ai_for_json(prompt):
+    """Fragt das Sprachmodell und gibt die JSON-Antwort als Python-Objekt zurück.
 
-    if request.method == "POST":
-        extra = request.POST.get("extra_quantity", "").strip()
-        if extra:
-            item.quantity = merge_quantities(item.quantity, extra)
-        item.save()
-        return JsonResponse({"status": "merged", "new_quantity": item.quantity})
+    Wirft bei jedem Fehler (Netz, Timeout, Ratenlimit, kaputtes JSON); die Views
+    loggen ihn und antworten mit einer allgemeinen Meldung.
+    """
+    response = openai_client().chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        temperature=0.7,
+    )
+    return json.loads(response.choices[0].message.content)
 
-    return redirect("shopping_list")
+
+def _raw_suggestions(data):
+    """Die (höchstens drei) Vorschlags-Dicts aus einer KI-Antwort."""
+    suggestions = data.get("suggestions") if isinstance(data, dict) else None
+    if not isinstance(suggestions, list):
+        return []
+    return [s for s in suggestions[:3] if isinstance(s, dict)]
+
+
+def _minutes(value):
+    """Zubereitungszeit als ganze Minuten (1–1440) oder None."""
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError, OverflowError):  # OverflowError: JSON erlaubt Infinity
+        return None
+    return minutes if 1 <= minutes <= 24 * 60 else None
 
 
 @login_required
@@ -460,9 +532,10 @@ def recipe_ai_suggest(request, pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=405)
 
-    api_key = settings.OPENAI_API_KEY
-    if not api_key:
-        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert. Bitte OPENAI_API_KEY als Umgebungsvariable setzen."}, status=503)
+    if not settings.OPENAI_API_KEY:
+        return JsonResponse({"error": AI_NOT_CONFIGURED_MESSAGE}, status=503)
+    if not ai_quota_available(request.user, "text"):
+        return JsonResponse({"error": QUOTA_MESSAGE}, status=429)
 
     prompt = f"""Du bist ein Kochassistent. Erstelle genau 3 verschiedene Rezeptvarianten für das Gericht "{recipe.title}".
 Antworte ausschließlich mit folgendem JSON:
@@ -477,24 +550,47 @@ Antworte ausschließlich mit folgendem JSON:
 }}"""
 
     try:
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
-        data = json.loads(response.choices[0].message.content)
-        return JsonResponse(data)
-    except RateLimitError:
-        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        data = _ask_ai_for_json(prompt)
+    except Exception:
+        logger.exception("KI-Rezeptvarianten für Gericht %s fehlgeschlagen", recipe.pk)
+        return JsonResponse({"error": AI_FAILED_MESSAGE}, status=502)
+
+    # Nur geprüfte, gekürzte Felder weitergeben – die Seite rendert sie direkt.
+    suggestions = []
+    for raw in _raw_suggestions(data):
+        ingredients = clean_ingredient_list(raw.get("ingredients"))
+        instructions = str(raw.get("instructions") or "").strip()[:MAX_INSTRUCTIONS_LENGTH]
+        if ingredients and instructions:
+            suggestions.append({
+                "variant": str(raw.get("variant") or "").strip()[:200],
+                "ingredients": ingredients,
+                "instructions": instructions,
+            })
+    if not suggestions:
+        return JsonResponse({"error": AI_UNUSABLE_MESSAGE}, status=502)
+    return JsonResponse({"suggestions": suggestions})
+
+
+def _image_json(recipe):
+    return {"image_url": recipe.image, "thumb_url": cloudinary_thumbnail(recipe.image)}
+
+
+def _store_recipe_image(recipe, source):
+    """Bild (Datei oder data-URI) bei Cloudinary ablegen und am Gericht speichern."""
+    import cloudinary.uploader
+
+    result = cloudinary.uploader.upload(
+        source,
+        folder="wochi/recipes",
+        public_id=f"recipe_{recipe.pk}",
+        overwrite=True,
+    )
+    recipe.image = result["secure_url"]
+    recipe.save(update_fields=["image"])
 
 
 def _generate_and_store_recipe_image(recipe):
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    response = client.images.generate(
+    response = openai_client().images.generate(
         model="gpt-image-1",
         prompt=(
             f"Professional food photography of '{recipe.title}', restaurant quality dish, "
@@ -507,23 +603,7 @@ def _generate_and_store_recipe_image(recipe):
     )
     # gpt-image-1 returns base64-encoded image data, not a URL.
     b64_data = response.data[0].b64_json
-    data_uri = f"data:image/png;base64,{b64_data}"
-
-    cloudinary_url = getattr(settings, "CLOUDINARY_URL", "")
-    if not cloudinary_url:
-        raise RuntimeError(
-            "Bildgenerierung benötigt Cloudinary (CLOUDINARY_URL nicht konfiguriert)."
-        )
-
-    import cloudinary.uploader
-    result = cloudinary.uploader.upload(
-        data_uri,
-        folder="wochi/recipes",
-        public_id=f"recipe_{recipe.pk}",
-        overwrite=True,
-    )
-    recipe.image = result["secure_url"]
-    recipe.save(update_fields=["image"])
+    _store_recipe_image(recipe, f"data:image/png;base64,{b64_data}")
 
 
 @login_required
@@ -533,12 +613,18 @@ def recipe_generate_image(request, pk):
     household = get_current_household(request.user)
     recipe = get_object_or_404(Recipe, pk=pk, household=household)
     if not settings.OPENAI_API_KEY:
-        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert."}, status=503)
+        return JsonResponse({"error": AI_NOT_CONFIGURED_MESSAGE}, status=503)
+    # Vor dem kostenpflichtigen Generieren prüfen, ob sich das Bild überhaupt speichern lässt.
+    if not getattr(settings, "CLOUDINARY_URL", ""):
+        return JsonResponse({"error": IMAGE_STORAGE_MISSING_MESSAGE}, status=503)
+    if not ai_quota_available(request.user, "image"):
+        return JsonResponse({"error": QUOTA_MESSAGE}, status=429)
     try:
         _generate_and_store_recipe_image(recipe)
-        return JsonResponse({"image_url": recipe.image})
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    except Exception:
+        logger.exception("Bildgenerierung für Gericht %s fehlgeschlagen", recipe.pk)
+        return JsonResponse({"error": IMAGE_GENERATION_FAILED_MESSAGE}, status=502)
+    return JsonResponse(_image_json(recipe))
 
 
 @login_required
@@ -550,19 +636,18 @@ def recipe_upload_image(request, pk):
     file = request.FILES.get("image")
     if not file:
         return JsonResponse({"error": "Keine Datei übermittelt."}, status=400)
+    if not (file.content_type or "").startswith("image/"):
+        return JsonResponse({"error": "Bitte ein Bild auswählen (z. B. JPG oder PNG)."}, status=400)
+    if file.size > MAX_IMAGE_UPLOAD_BYTES:
+        return JsonResponse({"error": "Das Bild ist zu groß (höchstens 10 MB)."}, status=400)
+    if not getattr(settings, "CLOUDINARY_URL", ""):
+        return JsonResponse({"error": IMAGE_STORAGE_MISSING_MESSAGE}, status=503)
     try:
-        import cloudinary.uploader
-        result = cloudinary.uploader.upload(
-            file,
-            folder="wochi/recipes",
-            public_id=f"recipe_{recipe.pk}",
-            overwrite=True,
-        )
-        recipe.image = result["secure_url"]
-        recipe.save(update_fields=["image"])
-        return JsonResponse({"image_url": recipe.image})
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        _store_recipe_image(recipe, file)
+    except Exception:
+        logger.exception("Bild-Upload für Gericht %s fehlgeschlagen", recipe.pk)
+        return JsonResponse({"error": IMAGE_UPLOAD_FAILED_MESSAGE}, status=502)
+    return JsonResponse(_image_json(recipe))
 
 
 @login_required
@@ -570,24 +655,39 @@ def recipe_apply_suggestion(request, pk):
     household = get_current_household(request.user)
     recipe = get_object_or_404(Recipe, pk=pk, household=household)
 
-    if request.method == "POST":
-        data = json.loads(request.body)
-        recipe.instructions = data.get("instructions", "")
-        recipe.save()
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=405)
 
+    try:
+        data = json.loads(request.body or b"{}")
+    except ValueError:
+        return JsonResponse({"error": "Ungültige Daten."}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Ungültige Daten."}, status=400)
+
+    instructions = data.get("instructions") or ""
+    ingredients = data.get("ingredients") or []
+    if not isinstance(instructions, str):
+        return JsonResponse({"error": "Ungültige Daten."}, status=400)
+    if len(instructions) > MAX_INSTRUCTIONS_LENGTH:
+        return JsonResponse(
+            {"error": f"Die Zubereitung ist zu lang (höchstens {MAX_INSTRUCTIONS_LENGTH} Zeichen)."},
+            status=400,
+        )
+    if not isinstance(ingredients, list) or len(ingredients) > MAX_RECIPE_INGREDIENTS:
+        return JsonResponse({"error": f"Höchstens {MAX_RECIPE_INGREDIENTS} Zutaten."}, status=400)
+
+    # Alles oder nichts: scheitert das Anlegen, bleiben die alten Zutaten erhalten.
+    with transaction.atomic():
+        recipe.instructions = instructions
+        recipe.save(update_fields=["instructions"])
         if not data.get("save_instructions_only"):
             recipe.ingredients.all().delete()
-            for ing in data.get("ingredients") or []:
-                name = ing.get("name", "").strip()
-                if name:
-                    Ingredient.objects.create(
-                        recipe=recipe,
-                        name=name,
-                        quantity=ing.get("quantity", ""),
-                    )
-        return JsonResponse({"success": True})
-
-    return JsonResponse({"error": "POST required"}, status=405)
+            Ingredient.objects.bulk_create([
+                Ingredient(recipe=recipe, name=ing["name"], quantity=ing["quantity"])
+                for ing in clean_ingredient_list(ingredients)
+            ])
+    return JsonResponse({"success": True})
 
 
 @login_required
@@ -595,7 +695,6 @@ def ai_generator_form(request):
     household = get_current_household(request.user)
     if not household:
         return redirect("choose_household")
-    from .utils import get_ingredient_autocomplete
     return render(request, "meals/ai_generator.html", {
         "household": household,
         "autocomplete": get_ingredient_autocomplete(household),
@@ -610,10 +709,18 @@ def ai_generator_suggest(request):
 
     try:
         payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
+    except ValueError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+    if not isinstance(payload, dict):
         return JsonResponse({"error": "Ungültiges JSON."}, status=400)
 
-    ingredients = [str(x).strip() for x in (payload.get("ingredients") or []) if str(x).strip()]
+    raw_ingredients = payload.get("ingredients") or []
+    if not isinstance(raw_ingredients, list):
+        return JsonResponse({"error": "Ungültige Zutatenliste."}, status=400)
+    ingredients = [
+        str(x).strip()[:MAX_INGREDIENT_LENGTH].strip()
+        for x in raw_ingredients if str(x).strip()
+    ]
     if not ingredients:
         return JsonResponse({"error": "Mindestens 1 Zutat angeben."}, status=400)
     if len(ingredients) > MAX_INGREDIENTS:
@@ -627,11 +734,15 @@ def ai_generator_suggest(request):
     if not (1 <= portions <= MAX_PORTIONS):
         return JsonResponse({"error": "Portionen müssen zwischen 1 und 50 liegen."}, status=400)
 
-    filters = [str(f).strip().lower() for f in (payload.get("filters") or []) if str(f).strip()]
+    # Nur bekannte Filter; alles andere würde ungeprüft im Prompt landen.
+    raw_filters = payload.get("filters") or []
+    requested = {str(f).strip().lower() for f in raw_filters} if isinstance(raw_filters, list) else set()
+    filters = [f for f in ALLOWED_FILTERS if f in requested]
 
-    api_key = getattr(settings, "OPENAI_API_KEY", "")
-    if not api_key:
-        return JsonResponse({"error": "Kein OpenAI API-Key konfiguriert."}, status=503)
+    if not getattr(settings, "OPENAI_API_KEY", ""):
+        return JsonResponse({"error": AI_NOT_CONFIGURED_MESSAGE}, status=503)
+    if not ai_quota_available(request.user, "text"):
+        return JsonResponse({"error": QUOTA_MESSAGE}, status=429)
 
     ingredients_csv = ", ".join(ingredients)
     filter_csv = ", ".join(filters) if filters else "keine"
@@ -660,32 +771,54 @@ def ai_generator_suggest(request):
     )
 
     try:
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
-        raw = response.choices[0].message.content
-    except RateLimitError:
-        return JsonResponse({"error": "Aktuell sind keine Rezeptvorschläge verfügbar."}, status=429)
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        data = _ask_ai_for_json(prompt)
+    except Exception:
+        logger.exception("KI-Rezeptgenerator fehlgeschlagen")
+        return JsonResponse({"error": AI_FAILED_MESSAGE}, status=502)
 
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
-
-    suggestions = data.get("suggestions") or []
+    suggestions = []
+    for raw in _raw_suggestions(data):
+        title = str(raw.get("title") or "").strip()[:200]
+        instructions = str(raw.get("instructions") or "").strip()[:MAX_INSTRUCTIONS_LENGTH]
+        if not (title and instructions and isinstance(raw.get("ingredients"), list)):
+            return JsonResponse({"error": AI_UNUSABLE_MESSAGE}, status=502)
+        suggestions.append({
+            "title": title,
+            "duration_min": _minutes(raw.get("duration_min")),
+            "ingredients": clean_ingredient_list(raw.get("ingredients")),
+            "instructions": instructions,
+        })
     if len(suggestions) != 3:
-        return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
-    for s in suggestions:
-        if not (s.get("title") and isinstance(s.get("ingredients"), list) and s.get("instructions")):
-            return JsonResponse({"error": "AI-Antwort unbrauchbar, bitte erneut versuchen."}, status=502)
+        return JsonResponse({"error": AI_UNUSABLE_MESSAGE}, status=502)
 
     return JsonResponse({"suggestions": suggestions})
+
+
+def _numbered_title(title, number):
+    """"Titel (2)" usw. – gekürzt, damit Name und Zusatz in 200 Zeichen passen."""
+    if number == 1:
+        return title
+    suffix = f" ({number})"
+    return title[:200 - len(suffix)] + suffix
+
+
+def _create_recipe_with_free_title(household, title, **fields):
+    """Legt das Gericht an; ist der Name vergeben, mit "(2)", "(3)", … dahinter.
+
+    Wie im Formular zählt Groß-/Kleinschreibung nicht als Unterschied.
+    Gibt None zurück, wenn kein freier Name gefunden wurde.
+    """
+    for number in range(1, MAX_TITLE_COLLISION_ATTEMPTS + 1):
+        candidate = _numbered_title(title, number)
+        if Recipe.objects.filter(household=household, title__iexact=candidate).exists():
+            continue
+        try:
+            with transaction.atomic():
+                return Recipe.objects.create(household=household, title=candidate, **fields)
+        except IntegrityError:
+            # Gerade parallel unter diesem Namen angelegt – nächste Nummer.
+            continue
+    return None
 
 
 @login_required
@@ -699,48 +832,42 @@ def ai_generator_save(request):
 
     try:
         payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
+    except ValueError:
+        return JsonResponse({"error": "Ungültiges JSON."}, status=400)
+    if not isinstance(payload, dict):
         return JsonResponse({"error": "Ungültiges JSON."}, status=400)
 
-    title = (payload.get("title") or "").strip()
+    # Die Werte stammen aus der KI-Antwort (über den Browser) – Typen und
+    # Längen sind nicht garantiert, z. B. Mengen als Zahl.
+    title = str(payload.get("title") or "").strip()[:200]
     if not title:
         return JsonResponse({"error": "Titel fehlt."}, status=400)
 
-    instructions = (payload.get("instructions") or "").strip()
-    duration_min = payload.get("duration_min")
+    raw_ingredients = payload.get("ingredients") or []
+    if not isinstance(raw_ingredients, list) or len(raw_ingredients) > MAX_RECIPE_INGREDIENTS:
+        return JsonResponse({"error": "Ungültige Zutatenliste."}, status=400)
+
+    instructions = str(payload.get("instructions") or "").strip()[:MAX_INSTRUCTIONS_LENGTH]
+    duration_min = _minutes(payload.get("duration_min"))
     notes_bits = []
     if duration_min:
         notes_bits.append(f"~{duration_min} min")
-    notes_bits.append("per AI generiert")
+    notes_bits.append("per KI generiert")
     notes = " · ".join(notes_bits)
 
-    MAX_TITLE_COLLISION_ATTEMPTS = 100
-    final_title = title
-    recipe = None
-    for attempt in range(MAX_TITLE_COLLISION_ATTEMPTS):
-        try:
-            with transaction.atomic():
-                recipe = Recipe.objects.create(
-                    household=household,
-                    title=final_title,
-                    notes=notes,
-                    instructions=instructions,
-                    created_by=request.user,
-                )
-            break
-        except IntegrityError:
-            # title already taken (race or sequential collision) — bump suffix
-            final_title = f"{title} ({attempt + 2})"
+    with transaction.atomic():
+        recipe = _create_recipe_with_free_title(
+            household, title, notes=notes, instructions=instructions, created_by=request.user
+        )
+        if recipe is not None:
+            Ingredient.objects.bulk_create([
+                Ingredient(recipe=recipe, name=ing["name"], quantity=ing["quantity"])
+                for ing in clean_ingredient_list(raw_ingredients)
+            ])
     if recipe is None:
         return JsonResponse({"error": "Konnte keinen eindeutigen Titel finden."}, status=409)
 
-    ingredients_payload = payload.get("ingredients") or []
-    Ingredient.objects.bulk_create([
-        Ingredient(recipe=recipe, name=(i.get("name") or "").strip(), quantity=(i.get("quantity") or "").strip())
-        for i in ingredients_payload if (i.get("name") or "").strip()
-    ])
-
     return JsonResponse({
         "recipe_id": recipe.pk,
-        "redirect_url": f"/meals/recipes/{recipe.pk}/",
+        "redirect_url": reverse("recipe_detail", args=[recipe.pk]),
     })

@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% load meal_tags %}
+
+{% block title %}Gerichte · Wochii{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -7,12 +10,13 @@
         <p class="text-muted mb-0">Eure gespeicherten Mahlzeiten</p>
     </div>
     <div class="d-flex gap-2 align-items-center">
-        <button class="btn btn-outline-secondary btn-sm" id="btn-generate-all" style="display:none;">
-            ✨ Bilder generieren
+        <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="btn-generate-all">
+            <span aria-hidden="true" class="me-1">✨</span><span class="js-label">Bilder generieren</span>
         </button>
         <a href="{% url 'recipe_create' %}" class="btn btn-dark">+ Gericht hinzufügen</a>
     </div>
 </div>
+{% csrf_token %}
 
 {% if recipes %}
     <div class="row g-3" id="recipe-grid">
@@ -20,14 +24,15 @@
             <div class="col-md-6" id="recipe-card-{{ recipe.pk }}">
                 <div class="card shadow-sm h-100 overflow-hidden">
                     {% if recipe.image %}
-                        <img src="{{ recipe.image }}"
+                        <img src="{{ recipe.image|recipe_thumb }}"
                              class="card-img-top"
                              alt="{{ recipe.title }}"
+                             loading="lazy" decoding="async"
                              style="height:180px;object-fit:cover;">
                     {% else %}
                         <div class="recipe-img-placeholder d-flex align-items-center justify-content-center"
                              data-no-image
-                             data-recipe-id="{{ recipe.pk }}"
+                             data-recipe-title="{{ recipe.title }}"
                              data-generate-url="{% url 'recipe_generate_image' recipe.pk %}"
                              style="height:180px;background:var(--color-accent);">
                             <span class="text-muted small">Kein Bild</span>
@@ -38,11 +43,11 @@
                         {% if recipe.notes %}
                             <p class="card-text text-muted small">{{ recipe.notes }}</p>
                         {% endif %}
-                        <p class="small text-muted">Erstellt von: {{ recipe.created_by }}</p>
+                        <p class="small text-muted">Erstellt von: {{ recipe.created_by|default:"–" }}</p>
                         <div class="d-flex gap-2">
-                            <a href="{% url 'recipe_detail' recipe.pk %}" class="btn btn-sm btn-dark">Zutaten</a>
-                            <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-sm btn-outline-secondary">Bearbeiten</a>
-                            <a href="{% url 'recipe_delete' recipe.pk %}" class="btn btn-sm btn-outline-danger">Löschen</a>
+                            <a href="{% url 'recipe_detail' recipe.pk %}" class="btn btn-sm btn-dark">Zutaten<span class="visually-hidden"> von {{ recipe.title }}</span></a>
+                            <a href="{% url 'recipe_update' recipe.pk %}" class="btn btn-sm btn-outline-secondary">Bearbeiten<span class="visually-hidden">: {{ recipe.title }}</span></a>
+                            <a href="{% url 'recipe_delete' recipe.pk %}" class="btn btn-sm btn-outline-danger">Löschen<span class="visually-hidden">: {{ recipe.title }}</span></a>
                         </div>
                     </div>
                 </div>
@@ -57,58 +62,70 @@
         </div>
     </div>
 {% endif %}
+{% endblock %}
 
+{% block scripts %}
 <script>
-const csrfToken = "{{ csrf_token }}";
+(function () {
+    "use strict";
 
-document.addEventListener("DOMContentLoaded", () => {
-    const placeholders = Array.from(document.querySelectorAll("[data-no-image]"));
     const btn = document.getElementById("btn-generate-all");
-    if (!btn) return;
+    const label = btn.querySelector(".js-label");
+    const placeholders = () => Array.from(document.querySelectorAll("[data-no-image]"));
 
-    if (placeholders.length > 0) {
-        btn.style.display = "";
-        btn.textContent = `✨ Bilder generieren (${placeholders.length})`;
+    function updateButton() {
+        const remaining = placeholders().length;
+        btn.classList.toggle("d-none", remaining === 0);
+        label.textContent = `Bilder generieren (${remaining})`;
     }
 
-    btn.addEventListener("click", async function () {
-        const items = Array.from(document.querySelectorAll("[data-no-image]"));
-        const total = items.length;
-        if (total === 0) return;
+    function showStatus(placeholder, text, busy) {
+        const content = document.createElement(busy ? "div" : "span");
+        if (busy) {
+            content.className = "spinner-border spinner-border-sm text-secondary";
+            content.setAttribute("role", "status");
+            const hidden = document.createElement("span");
+            hidden.className = "visually-hidden";
+            hidden.textContent = text;
+            content.appendChild(hidden);
+        } else {
+            content.className = "text-muted small";
+            content.textContent = text;
+        }
+        placeholder.replaceChildren(content);
+    }
+
+    updateButton();
+
+    btn.addEventListener("click", async () => {
+        const items = placeholders();
+        if (items.length === 0) return;
         btn.disabled = true;
 
         for (let i = 0; i < items.length; i++) {
             const placeholder = items[i];
-            const pk = placeholder.dataset.recipeId;
-            const generateUrl = placeholder.dataset.generateUrl;
-
-            btn.textContent = `✨ ${i + 1} / ${total} generiert…`;
-            placeholder.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary m-auto"></div>';
-
+            label.textContent = `${i + 1} / ${items.length} wird generiert…`;
+            showStatus(placeholder, "Bild wird generiert…", true);
             try {
-                const resp = await fetch(generateUrl, {
-                    method: "POST",
-                    headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-                });
-                const data = await resp.json();
-                if (data.image_url) {
-                    const img = document.createElement("img");
-                    img.src = data.image_url;
-                    img.className = "card-img-top";
-                    img.alt = "";
-                    img.style.cssText = "height:180px;object-fit:cover;";
-                    placeholder.replaceWith(img);
-                } else {
-                    placeholder.innerHTML = `<span class="text-muted small">${data.error || "Fehler"}</span>`;
-                }
-            } catch {
-                placeholder.innerHTML = '<span class="text-muted small">Fehler</span>';
+                const data = await wochii.post(placeholder.dataset.generateUrl, new FormData());
+                const img = document.createElement("img");
+                img.src = data.thumb_url || data.image_url;
+                img.className = "card-img-top";
+                img.alt = placeholder.dataset.recipeTitle || "";
+                img.decoding = "async";
+                img.style.cssText = "height:180px;object-fit:cover;";
+                placeholder.replaceWith(img);
+            } catch (err) {
+                // wochii.post hat die Meldung schon angezeigt (z. B. Tageslimit erreicht).
+                // Abbrechen, statt für jedes weitere Gericht erneut zu scheitern.
+                showStatus(placeholder, "Kein Bild", false);
+                break;
             }
         }
 
-        btn.textContent = "✓ Alle Bilder generiert";
-        btn.style.display = "none";
+        btn.disabled = false;
+        updateButton();
     });
-});
+})();
 </script>
 {% endblock %}

@@ -16,7 +16,6 @@ from .views import (
     ingredient_delete,
     ingredient_scale,
     ingredient_to_shopping,
-    shopping_merge_quantity,
     recipe_ai_suggest,
     recipe_apply_suggestion,
     recipe_generate_image,
@@ -43,7 +42,7 @@ urlpatterns = [
     path("ingredients/<int:pk>/to-shopping/", ingredient_to_shopping, name="ingredient_to_shopping"),
     path("ingredients/<int:pk>/delete/", ingredient_delete, name="ingredient_delete"),
     path("ingredients/<int:pk>/scale/", ingredient_scale, name="ingredient_scale"),
-    path("shopping/<int:pk>/merge/", shopping_merge_quantity, name="shopping_merge_quantity"),
+    # Mengen auf der Einkaufsliste zusammenführen: shopping_merge_quantity in shopping/urls.py.
     path("recipes/<int:pk>/all-to-shopping/", recipe_all_to_shopping, name="recipe_all_to_shopping"),
     path("recipes/<int:pk>/ai-suggest/", recipe_ai_suggest, name="recipe_ai_suggest"),
     path("recipes/<int:pk>/apply-suggestion/", recipe_apply_suggestion, name="recipe_apply_suggestion"),

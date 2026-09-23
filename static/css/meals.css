@@ -1,0 +1,28 @@
+/* Ergänzungen für Essensplanung und Rezepte (geladen über {% block extra_head %}). */
+
+/* Django markiert Felder mit Fehler per aria-invalid – rot umranden wie .is-invalid. */
+.form-control[aria-invalid="true"],
+.form-select[aria-invalid="true"] {
+  border-color: var(--bs-form-invalid-border-color);
+}
+
+/* Menge in der Zutatenliste: sieht aus wie Text, ist aber ein Button zum Bearbeiten.
+   Unterstreichung statt Rahmen, weil styles.css den Button mobil auf 44px Höhe zieht. */
+.qty-display {
+  padding: 0 .35rem;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted, #6c757d);
+  font-size: .875em;
+  text-decoration: underline dashed;
+  text-underline-offset: .2em;
+  cursor: pointer;
+}
+.qty-display:hover,
+.qty-display:focus-visible {
+  color: var(--color-text, #212529);
+}
+
+.qty-editor-input {
+  max-width: 10rem;
+}

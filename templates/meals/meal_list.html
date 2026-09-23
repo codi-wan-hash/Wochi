@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Essensplan · Wochii{% endblock %}
+
 {% block content %}
 
 
@@ -9,21 +11,24 @@
     <p class="text-muted mb-0">{{ household.name }}</p>
   </div>
   <div class="d-flex gap-2 align-items-center">
-    <a href="{% url 'meal_list' %}" class="btn btn-secondary btn-sm">Planung</a>
+    <a href="{% url 'meal_list' %}" class="btn btn-secondary btn-sm" aria-current="page">Planung</a>
     <a href="{% url 'meal_history' %}" class="btn btn-outline-secondary btn-sm">Historie</a>
-    <button class="btn btn-outline-success btn-sm" id="btn-week-to-shopping">
-      🛒 Zutaten der Woche → Einkaufsliste
+    <button type="button" class="btn btn-outline-success btn-sm" id="btn-week-to-shopping"
+            data-url="{% url 'meals_week_to_shopping' %}"
+            data-shopping-url="{% url 'shopping_list' %}"
+            data-meal-count="{{ planned_meal_count }}"
+            data-confirm="Zutaten von {{ planned_meal_count }} geplanten Mahlzeit{{ planned_meal_count|pluralize:'en' }} (heute bis {{ plan_end|date:'D, d.m.' }}) auf die Einkaufsliste setzen? Gleiche Artikel werden zusammengefasst."
+            title="Zutaten aller Mahlzeiten von heute bis Sonntag nächster Woche">
+      <span aria-hidden="true" class="me-1">🛒</span><span class="js-label">Zutaten → Einkaufsliste</span>
     </button>
   </div>
 </div>
+{% csrf_token %}
 
 <div class="card shadow-sm overflow-hidden">
 
-  {% now "Y-m-d" as today_str %}
-  {% now "W" as today_week %}
-
   {% for day in week_plan %}
-    {% with wday=day.date|date:"N" iso_week=day.date|date:"W" %}
+    {% with day_label=day.date|date:"D, d.m." %}
 
       {% if forloop.first %}
         <div class="week-header">Diese Woche</div>
@@ -32,9 +37,7 @@
         <div class="week-header">Nächste Woche</div>
       {% endif %}
 
-      <div class="meal-row
-        {% if day.date|date:'Y-m-d' == today_str %}is-today{% endif %}
-        {% if day.date|date:'w' == '0' or day.date|date:'w' == '6' %}is-weekend{% endif %}">
+      <div class="meal-row{% if day.is_today %} is-today{% endif %}{% if day.is_weekend %} is-weekend{% endif %}">
 
         <div class="day-col">
           <div class="day-name">{{ day.date|date:"D" }}</div>
@@ -45,18 +48,18 @@
           <div class="meal-col-inner">
             {% if day.lunch %}
               <div class="meal-content">
-                <div class="meal-label">☀ Mittag</div>
+                <div class="meal-label"><span aria-hidden="true">☀</span> Mittag</div>
                 <div class="meal-title">{{ day.lunch.recipe.title }}</div>
                 {% if day.lunch.assigned_to %}
                   <div class="meal-person">{{ day.lunch.assigned_to }}</div>
                 {% endif %}
               </div>
               <div class="meal-actions">
-                <a href="{% url 'meal_update' day.lunch.pk %}" title="Bearbeiten">✏</a>
-                <a href="{% url 'meal_delete' day.lunch.pk %}" class="del" title="Löschen">✕</a>
+                <a href="{% url 'meal_update' day.lunch.pk %}" title="Bearbeiten" aria-label="Mittagessen am {{ day_label }} bearbeiten">✏</a>
+                <a href="{% url 'meal_delete' day.lunch.pk %}" class="del" title="Löschen" aria-label="Mittagessen am {{ day_label }} löschen">✕</a>
               </div>
             {% else %}
-              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&meal_type=lunch" class="add-link">
+              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&amp;meal_type=lunch" class="add-link" aria-label="Mittagessen am {{ day_label }} planen">
                 ☀ + Mittag
               </a>
             {% endif %}
@@ -67,18 +70,18 @@
           <div class="meal-col-inner">
             {% if day.dinner %}
               <div class="meal-content">
-                <div class="meal-label">🌙 Abend</div>
+                <div class="meal-label"><span aria-hidden="true">🌙</span> Abend</div>
                 <div class="meal-title">{{ day.dinner.recipe.title }}</div>
                 {% if day.dinner.assigned_to %}
                   <div class="meal-person">{{ day.dinner.assigned_to }}</div>
                 {% endif %}
               </div>
               <div class="meal-actions">
-                <a href="{% url 'meal_update' day.dinner.pk %}" title="Bearbeiten">✏</a>
-                <a href="{% url 'meal_delete' day.dinner.pk %}" class="del" title="Löschen">✕</a>
+                <a href="{% url 'meal_update' day.dinner.pk %}" title="Bearbeiten" aria-label="Abendessen am {{ day_label }} bearbeiten">✏</a>
+                <a href="{% url 'meal_delete' day.dinner.pk %}" class="del" title="Löschen" aria-label="Abendessen am {{ day_label }} löschen">✕</a>
               </div>
             {% else %}
-              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&meal_type=dinner" class="add-link">
+              <a href="{% url 'meal_create' %}?date={{ day.date|date:'Y-m-d' }}&amp;meal_type=dinner" class="add-link" aria-label="Abendessen am {{ day_label }} planen">
                 🌙 + Abend
               </a>
             {% endif %}
@@ -92,28 +95,50 @@
   {% endfor %}
 
 </div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-const csrfToken = "{{ csrf_token }}";
-document.getElementById("btn-week-to-shopping").addEventListener("click", function () {
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = "…";
-    fetch("{% url 'meals_week_to_shopping' %}", {
-        method: "POST",
-        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-    })
-    .then(r => r.json())
-    .then(data => {
-        const msg = data.added === 0 && data.merged === 0
-            ? "Keine Zutaten gefunden."
-            : `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
-        btn.textContent = "✓ " + msg;
-        btn.classList.replace("btn-outline-success", "btn-success");
-    })
-    .catch(() => {
-        btn.textContent = "Fehler";
-        btn.disabled = false;
+(function () {
+    "use strict";
+
+    const btn = document.getElementById("btn-week-to-shopping");
+    const label = btn.querySelector(".js-label");
+    const idleText = label.textContent;
+
+    btn.addEventListener("click", async () => {
+        if (Number(btn.dataset.mealCount) === 0) {
+            wochii.toast("Bis Sonntag nächster Woche ist noch keine Mahlzeit geplant.");
+            return;
+        }
+        if (!confirm(btn.dataset.confirm)) return;
+
+        // Gesperrt, solange die Anfrage läuft: ein Doppelklick würde alle Mengen verdoppeln.
+        btn.disabled = true;
+        label.textContent = "Wird übertragen…";
+        try {
+            const data = await wochii.post(btn.dataset.url, new FormData());
+            if (data.added === 0 && data.merged === 0) {
+                wochii.toast("Die geplanten Gerichte haben noch keine Zutaten.");
+                label.textContent = idleText;
+                btn.disabled = false;
+                return;
+            }
+            const message = `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
+            // Bleibt gesperrt, damit dieselben Zutaten nicht versehentlich doppelt landen.
+            label.textContent = "✓ Auf der Einkaufsliste";
+            btn.classList.replace("btn-outline-success", "btn-success");
+            wochii.toast(message, {
+                actionLabel: "Zur Liste",
+                onAction: () => { window.location.href = btn.dataset.shoppingUrl; },
+                duration: 6000,
+            });
+        } catch (err) {
+            // Meldung kommt von wochii.post.
+            label.textContent = idleText;
+            btn.disabled = false;
+        }
     });
-});
+})();
 </script>
 {% endblock %}

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Essens-Historie · Wochii{% endblock %}
+
 {% block content %}
 
 
@@ -10,24 +12,18 @@
   </div>
   <div class="d-flex gap-2">
     <a href="{% url 'meal_list' %}" class="btn btn-outline-secondary btn-sm">Planung</a>
-    <a href="{% url 'meal_history' %}" class="btn btn-secondary btn-sm">Historie</a>
+    <a href="{% url 'meal_history' %}" class="btn btn-secondary btn-sm" aria-current="page">Historie</a>
   </div>
 </div>
 
 <div class="card shadow-sm overflow-hidden">
-
-  {% now "Y-m-d" as today_str %}
 
   {% for day in history_days %}
     {% if forloop.first %}
       <div class="week-header">Letzte 2 Wochen</div>
     {% endif %}
 
-    {% with is_yesterday=day.date|date:"Y-m-d" is_weekend=day.date|date:"w" no_meals=day.lunch|default:day.dinner %}
-    <div class="meal-row
-      {% if day.date|date:'Y-m-d' == today_str %}is-yesterday{% endif %}
-      {% if day.date|date:'w' == '0' or day.date|date:'w' == '6' %}is-weekend{% endif %}
-      {% if not day.lunch and not day.dinner %}empty-row{% endif %}">
+    <div class="meal-row{% if day.is_yesterday %} is-yesterday{% endif %}{% if day.is_weekend %} is-weekend{% endif %}{% if not day.lunch and not day.dinner %} empty-row{% endif %}">
 
       <div class="day-col">
         <div class="day-name">{{ day.date|date:"D" }}</div>
@@ -37,7 +33,7 @@
       <div class="meal-col">
         {% if day.lunch %}
           <div>
-            <div class="meal-label">☀ Mittag</div>
+            <div class="meal-label"><span aria-hidden="true">☀</span> Mittag</div>
             <div class="meal-title">{{ day.lunch.recipe.title }}</div>
             {% if day.lunch.assigned_to %}
               <div class="meal-person">{{ day.lunch.assigned_to }}</div>
@@ -51,7 +47,7 @@
       <div class="meal-col">
         {% if day.dinner %}
           <div>
-            <div class="meal-label">🌙 Abend</div>
+            <div class="meal-label"><span aria-hidden="true">🌙</span> Abend</div>
             <div class="meal-title">{{ day.dinner.recipe.title }}</div>
             {% if day.dinner.assigned_to %}
               <div class="meal-person">{{ day.dinner.assigned_to }}</div>
@@ -63,7 +59,6 @@
       </div>
 
     </div>
-    {% endwith %}
   {% empty %}
     <div class="p-4 text-center text-muted">Keine Mahlzeiten in den letzten 14 Tagen geplant.</div>
   {% endfor %}

@@ -1,12 +1,21 @@
 {% extends "base.html" %}
 
+{% block title %}Gericht löschen · Wochii{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card shadow-sm border-0 rounded-4">
             <div class="card-body p-4">
                 <h1 class="h3 mb-3">Gericht löschen</h1>
-                <p>Möchtest du <strong>"{{ recipe.title }}"</strong> wirklich löschen?</p>
+                <p>Möchtest du <strong>„{{ recipe.title }}“</strong> wirklich löschen?</p>
+                {% if planned_meal_count %}
+                    <div class="alert alert-warning" role="alert">
+                        Damit {{ planned_meal_count|pluralize:"wird,werden" }} auch
+                        <strong>{{ planned_meal_count }} geplante Mahlzeit{{ planned_meal_count|pluralize:"en" }}</strong>
+                        mit diesem Gericht aus dem Essensplan gelöscht{% if upcoming_meal_count %} – davon {{ upcoming_meal_count }} ab heute{% endif %}.
+                    </div>
+                {% endif %}
 
                 <form method="post">
                     {% csrf_token %}

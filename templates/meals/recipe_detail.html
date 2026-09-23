@@ -1,4 +1,9 @@
 {% extends "base.html" %}
+{% load static meal_tags %}
+
+{% block title %}{{ recipe.title }} · Wochii{% endblock %}
+
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/meals.css' %}">{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -16,27 +21,28 @@
 <!-- Rezept-Bild -->
 {% if recipe.image %}
 <div class="mb-4 position-relative" id="image-block">
-    <img src="{{ recipe.image }}" alt="{{ recipe.title }}" id="recipe-img"
+    {# Ohne loading="lazy": das Bild steht ganz oben und soll sofort laden. #}
+    <img src="{{ recipe.image|recipe_thumb:1024 }}" alt="{{ recipe.title }}" id="recipe-img" decoding="async"
          style="width:100%;height:280px;object-fit:cover;border-radius:0.75rem;">
     <div class="position-absolute top-0 end-0 p-2 d-flex gap-1" id="image-actions-overlay">
-        <button class="btn btn-sm px-2 py-1" id="btn-change-image"
+        <button type="button" class="btn btn-sm px-2 py-1" id="btn-change-image"
                 style="background:rgba(0,0,0,0.45);color:#fff;font-size:.8rem;border:none;border-radius:6px;">
-            ✎ Bild ändern
+            <span aria-hidden="true" class="me-1">✎</span>Bild ändern
         </button>
     </div>
     <div id="change-image-bar" class="mt-2 d-flex gap-2 align-items-center" style="display:none!important;">
-        <button class="btn btn-outline-secondary btn-sm" id="btn-regenerate">✨ Neu generieren</button>
-        <label class="btn btn-outline-secondary btn-sm mb-0" for="replace-file-input">📷 Ersetzen</label>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-regenerate"><span aria-hidden="true" class="me-1">✨</span><span class="js-label">Neu generieren</span></button>
+        <label class="btn btn-outline-secondary btn-sm mb-0" for="replace-file-input"><span aria-hidden="true" class="me-1">📷</span><span class="js-label">Ersetzen</span></label>
         <input type="file" id="replace-file-input" accept="image/*" class="d-none">
-        <button class="btn btn-link btn-sm text-muted p-0" id="btn-cancel-change">Abbrechen</button>
+        <button type="button" class="btn btn-link btn-sm text-muted p-0" id="btn-cancel-change">Abbrechen</button>
     </div>
 </div>
 {% else %}
 <div class="mb-4 d-flex align-items-center justify-content-center gap-3" id="image-placeholder"
      style="height:160px;background:var(--color-accent);border-radius:0.75rem;border:2px dashed var(--color-border);">
-    <button class="btn btn-dark btn-sm" id="btn-generate-image">✨ Bild generieren</button>
+    <button type="button" class="btn btn-dark btn-sm" id="btn-generate-image"><span aria-hidden="true" class="me-1">✨</span><span class="js-label">Bild generieren</span></button>
     <span class="text-muted small">oder</span>
-    <label class="btn btn-outline-secondary btn-sm mb-0" for="upload-file-input">📷 Hochladen</label>
+    <label class="btn btn-outline-secondary btn-sm mb-0" for="upload-file-input"><span aria-hidden="true" class="me-1">📷</span><span class="js-label">Hochladen</span></label>
     <input type="file" id="upload-file-input" accept="image/*" class="d-none">
 </div>
 {% endif %}
@@ -48,40 +54,37 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">Zutaten</span>
-                <button class="btn btn-outline-success btn-sm" id="btn-all-to-shopping">
-                    🛒 Alle in Einkaufsliste
+                <button type="button" class="btn btn-outline-success btn-sm" id="btn-all-to-shopping">
+                    <span aria-hidden="true" class="me-1">🛒</span><span class="js-label">Alle in Einkaufsliste</span>
                 </button>
             </div>
             <ul class="list-group list-group-flush" id="ingredient-list">
                 {% for ingredient in recipe.ingredients.all %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center" id="ingredient-{{ ingredient.pk }}">
-                        <span class="d-flex align-items-center gap-2 flex-grow-1 me-2">
-                            {{ ingredient.name }}
-                            <span class="qty-display text-muted small" style="cursor:pointer;" title="Menge anpassen"
-                                data-pk="{{ ingredient.pk }}"
-                                data-scale-url="{% url 'ingredient_scale' ingredient.pk %}">
-                                {% if ingredient.quantity %}{{ ingredient.quantity }}{% else %}<span class="fst-italic">—</span>{% endif %}
-                            </span>
-                            <input type="text" class="qty-input form-control form-control-sm d-none"
-                                style="max-width:90px;"
-                                data-pk="{{ ingredient.pk }}"
-                                data-scale-url="{% url 'ingredient_scale' ingredient.pk %}"
-                                value="{{ ingredient.quantity }}">
-                        </span>
-                        <span class="d-flex gap-1">
-                            <button class="btn btn-sm btn-outline-success py-0 px-2 btn-to-shopping"
-                                data-url="{% url 'ingredient_to_shopping' ingredient.pk %}"
-                                data-name="{{ ingredient.name }}"
-                                data-quantity="{{ ingredient.quantity }}"
-                                title="In Einkaufsliste">+</button>
-                            <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-delete-ingredient"
-                                data-url="{% url 'ingredient_delete' ingredient.pk %}">✕</button>
-                        </span>
-                    </li>
+                    {% include "meals/_ingredient_row.html" %}
                 {% empty %}
                     <li class="list-group-item text-muted" id="empty-ingredients">Noch keine Zutaten hinzugefügt.</li>
                 {% endfor %}
             </ul>
+        </div>
+        <template id="ingredient-row-template">{% include "meals/_ingredient_row.html" with ingredient=None %}</template>
+
+        {# Ein gemeinsamer Editor für alle Mengen; das Skript hängt ihn in die angeklickte Zeile. #}
+        <div id="qty-editor-home" hidden>
+            <form id="qty-editor" class="qty-editor mt-2">
+                <label for="qty-editor-input" class="form-label small mb-1" id="qty-editor-label">Menge</label>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <input type="text" id="qty-editor-input" name="quantity" maxlength="100" autocomplete="off"
+                           list="quantity-suggestions" class="form-control form-control-sm qty-editor-input">
+                    <button type="submit" class="btn btn-dark btn-sm">Speichern</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qty-editor-cancel">Abbrechen</button>
+                </div>
+                <div class="form-check mt-2 mb-0">
+                    <input class="form-check-input" type="checkbox" name="scale_all" value="1" id="qty-editor-scale-all"
+                           aria-describedby="qty-editor-scale-help">
+                    <label class="form-check-label small" for="qty-editor-scale-all">Alle Mengen im gleichen Verhältnis umrechnen</label>
+                </div>
+                <div class="form-text mt-0" id="qty-editor-scale-help">Zum Beispiel für mehr Portionen: 200 g → 400 g verdoppelt alle Zutaten.</div>
+            </form>
         </div>
     </div>
 
@@ -96,14 +99,14 @@
                 <datalist id="quantity-suggestions">
                     {% for q in quantity_suggestions %}<option value="{{ q }}">{% endfor %}
                 </datalist>
-                <form id="ingredient-form">
+                <form id="ingredient-form" method="post" action="{% url 'ingredient_add' recipe.pk %}">
                     {% csrf_token %}
                     <div class="mb-2">
-                        <label class="form-label small fw-semibold">Name</label>
+                        <label class="form-label small fw-semibold" for="{{ form.name.id_for_label }}">Name</label>
                         {{ form.name }}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold">Menge</label>
+                        <label class="form-label small fw-semibold" for="{{ form.quantity.id_for_label }}">Menge</label>
                         {{ form.quantity }}
                     </div>
                     <button type="submit" class="btn btn-dark btn-sm w-100">Hinzufügen</button>
@@ -117,7 +120,7 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">Zubereitung</span>
-                <button class="btn btn-outline-secondary btn-sm" id="btn-edit-instructions">Bearbeiten</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-edit-instructions">Bearbeiten</button>
             </div>
             <div class="card-body">
                 <div id="instructions-display">
@@ -128,10 +131,11 @@
                     {% endif %}
                 </div>
                 <div id="instructions-edit" style="display:none;">
-                    <textarea id="instructions-textarea" class="form-control mb-2" rows="10">{{ recipe.instructions }}</textarea>
+                    <label for="instructions-textarea" class="visually-hidden">Zubereitung</label>
+                    <textarea id="instructions-textarea" class="form-control mb-2" rows="10" maxlength="20000">{{ recipe.instructions }}</textarea>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-dark btn-sm" id="btn-save-instructions">Speichern</button>
-                        <button class="btn btn-outline-secondary btn-sm" id="btn-cancel-instructions">Abbrechen</button>
+                        <button type="button" class="btn btn-dark btn-sm" id="btn-save-instructions">Speichern</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-cancel-instructions">Abbrechen</button>
                     </div>
                 </div>
             </div>
@@ -143,23 +147,23 @@
         <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="fw-semibold">KI-Rezeptvorschläge</span>
-                <button class="btn btn-dark btn-sm" id="btn-ai-suggest">
-                    ✨ 3 Vorschläge generieren
+                <button type="button" class="btn btn-dark btn-sm" id="btn-ai-suggest">
+                    <span aria-hidden="true" class="me-1">✨</span><span class="js-label">3 Vorschläge generieren</span>
                 </button>
             </div>
-            <div class="card-body" id="ai-results" style="display:none;"></div>
+            <div class="card-body" id="ai-results" aria-live="polite" style="display:none;"></div>
         </div>
     </div>
 
 </div>
 
 <!-- Duplikat-Modal -->
-<div class="modal fade" id="duplicateModal" tabindex="-1">
+<div class="modal fade" id="duplicateModal" tabindex="-1" aria-labelledby="duplicateModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-sm">
         <div class="modal-content">
             <div class="modal-header">
-                <h6 class="modal-title">Bereits in der Einkaufsliste</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h2 class="modal-title h6" id="duplicateModalTitle">Bereits in der Einkaufsliste</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
             </div>
             <div class="modal-body">
                 <p class="mb-1"><strong id="modal-name"></strong> ist bereits auf der Einkaufsliste.</p>
@@ -175,70 +179,81 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-const csrfToken = "{{ csrf_token }}";
-const addIngredientUrl = "{% url 'ingredient_add' recipe.pk %}";
-const saveInstructionsUrl = "{% url 'recipe_update' recipe.pk %}";
-const aiSuggestUrl = "{% url 'recipe_ai_suggest' recipe.pk %}";
-const applyUrl = "{% url 'recipe_apply_suggestion' recipe.pk %}";
-const allToShoppingUrl = "{% url 'recipe_all_to_shopping' recipe.pk %}";
-const generateImageUrl = "{% url 'recipe_generate_image' recipe.pk %}";
-const uploadImageUrl = "{% url 'recipe_upload_image' recipe.pk %}";
-let duplicateModal;
+/* Alle Texte aus der Datenbank oder von der KI werden per textContent gesetzt,
+ * nie als HTML – Zutaten und KI-Antworten sind Nutzereingaben. */
+(function () {
+    "use strict";
 
-document.addEventListener("DOMContentLoaded", () => {
-    duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+    const addIngredientUrl = "{% url 'ingredient_add' recipe.pk %}";
+    const aiSuggestUrl = "{% url 'recipe_ai_suggest' recipe.pk %}";
+    const applyUrl = "{% url 'recipe_apply_suggestion' recipe.pk %}";
+    const allToShoppingUrl = "{% url 'recipe_all_to_shopping' recipe.pk %}";
+    const generateImageUrl = "{% url 'recipe_generate_image' recipe.pk %}";
+    const uploadImageUrl = "{% url 'recipe_upload_image' recipe.pk %}";
 
-    // ── Bild generieren (kein Bild vorhanden) ──
+    const list = document.getElementById("ingredient-list");
+    const rowTemplate = document.getElementById("ingredient-row-template");
+    const duplicateModal = new bootstrap.Modal(document.getElementById("duplicateModal"));
+
+    function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    }
+
+    function setLabel(control, text) {
+        const label = control.querySelector(".js-label");
+        (label || control).textContent = text;
+    }
+
+    function postJSON(url, data) {
+        return wochii.post(url, new Blob([JSON.stringify(data)], { type: "application/json" }));
+    }
+
+    // ── Bild generieren / hochladen ──
+    async function generateImage(button, idleText) {
+        button.disabled = true;
+        setLabel(button, "Wird generiert…");
+        try {
+            await wochii.post(generateImageUrl, new FormData());
+            location.reload();
+        } catch (err) {
+            // Die Fehlermeldung zeigt wochii.post selbst an.
+            button.disabled = false;
+            setLabel(button, idleText);
+        }
+    }
+
+    async function uploadImage(input) {
+        if (!input.files.length) return;
+        const label = input.labels && input.labels[0];
+        const idleText = label ? label.querySelector(".js-label").textContent : "";
+        if (label) setLabel(label, "Wird hochgeladen…");
+        const body = new FormData();
+        body.append("image", input.files[0]);
+        try {
+            await wochii.post(uploadImageUrl, body);
+            location.reload();
+        } catch (err) {
+            if (label) setLabel(label, idleText);
+            input.value = "";  // dieselbe Datei lässt sich erneut auswählen
+        }
+    }
+
     const btnGenerate = document.getElementById("btn-generate-image");
-    if (btnGenerate) {
-        btnGenerate.addEventListener("click", function () {
-            this.disabled = true;
-            this.textContent = "Wird generiert…";
-            fetch(generateImageUrl, {
-                method: "POST",
-                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.image_url) location.reload();
-                else {
-                    this.disabled = false;
-                    this.textContent = "✨ Bild generieren";
-                    alert("Fehler: " + (data.error || "Unbekannter Fehler"));
-                }
-            })
-            .catch(() => {
-                this.disabled = false;
-                this.textContent = "✨ Bild generieren";
-            });
-        });
-    }
+    if (btnGenerate) btnGenerate.addEventListener("click", () => generateImage(btnGenerate, "Bild generieren"));
+    const btnRegenerate = document.getElementById("btn-regenerate");
+    if (btnRegenerate) btnRegenerate.addEventListener("click", () => generateImage(btnRegenerate, "Neu generieren"));
+    ["upload-file-input", "replace-file-input"].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.addEventListener("change", () => uploadImage(input));
+    });
 
-    // ── Bild hochladen (kein Bild vorhanden) ──
-    const uploadInput = document.getElementById("upload-file-input");
-    if (uploadInput) {
-        uploadInput.addEventListener("change", function () {
-            if (!this.files.length) return;
-            const label = this.previousElementSibling;
-            label.textContent = "Wird hochgeladen…";
-            const fd = new FormData();
-            fd.append("image", this.files[0]);
-            fetch(uploadImageUrl, {
-                method: "POST",
-                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-                body: fd,
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.image_url) location.reload();
-                else alert("Fehler: " + (data.error || "Unbekannter Fehler"));
-            });
-        });
-    }
-
-    // ── "Bild ändern"-Overlay (Bild vorhanden) ──
     const btnChangeImage = document.getElementById("btn-change-image");
     const changeBar = document.getElementById("change-image-bar");
     if (btnChangeImage && changeBar) {
@@ -250,332 +265,313 @@ document.addEventListener("DOMContentLoaded", () => {
             changeBar.style.setProperty("display", "none", "important");
             btnChangeImage.style.display = "";
         });
-
-        document.getElementById("btn-regenerate").addEventListener("click", function () {
-            this.disabled = true;
-            this.textContent = "Wird generiert…";
-            fetch(generateImageUrl, {
-                method: "POST",
-                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.image_url) location.reload();
-                else {
-                    this.disabled = false;
-                    this.textContent = "✨ Neu generieren";
-                    alert("Fehler: " + (data.error || "Unbekannter Fehler"));
-                }
-            })
-            .catch(() => {
-                this.disabled = false;
-                this.textContent = "✨ Neu generieren";
-            });
-        });
-
-        document.getElementById("replace-file-input").addEventListener("change", function () {
-            if (!this.files.length) return;
-            const label = this.previousElementSibling;
-            label.textContent = "Wird hochgeladen…";
-            const fd = new FormData();
-            fd.append("image", this.files[0]);
-            fetch(uploadImageUrl, {
-                method: "POST",
-                headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-                body: fd,
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.image_url) location.reload();
-                else alert("Fehler: " + (data.error || "Unbekannter Fehler"));
-            });
-        });
     }
 
-    document.getElementById("btn-all-to-shopping").addEventListener("click", function () {
-        const btn = this;
-        btn.disabled = true;
-        btn.textContent = "…";
-        ajaxPost(allToShoppingUrl, new FormData())
-            .then(r => r.json())
-            .then(data => {
-                const msg = data.added === 0 && data.merged === 0
-                    ? "Keine Zutaten vorhanden."
-                    : `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
-                btn.textContent = "✓ " + msg;
-                btn.classList.replace("btn-outline-success", "btn-success");
-            })
-            .catch(() => {
-                btn.textContent = "Fehler";
-                btn.disabled = false;
-            });
-    });
-});
-
-function ajaxPost(url, body) {
-    return fetch(url, {
-        method: "POST",
-        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
-        body: body,
-    });
-}
-function ajaxPostJSON(url, data) {
-    return fetch(url, {
-        method: "POST",
-        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-    });
-}
-
-// ── Zutat zum Rezept hinzufügen ──
-document.getElementById("ingredient-form").addEventListener("submit", function (e) {
-    e.preventDefault();
-    ajaxPost(addIngredientUrl, new FormData(this))
-        .then(r => r.json())
-        .then(ingredient => {
-            document.getElementById("empty-ingredients")?.remove();
-            const list = document.getElementById("ingredient-list");
-            const existingLi = document.getElementById("ingredient-" + ingredient.id);
-
-            const liHTML = `
-                <span class="d-flex align-items-center gap-2 flex-grow-1 me-2">
-                    ${ingredient.name}
-                    <span class="qty-display text-muted small" style="cursor:pointer;" title="Menge anpassen"
-                        data-pk="${ingredient.id}"
-                        data-scale-url="/meals/ingredients/${ingredient.id}/scale/">
-                        ${ingredient.quantity || '<span class="fst-italic">—</span>'}
-                    </span>
-                    <input type="text" class="qty-input form-control form-control-sm d-none"
-                        style="max-width:90px;"
-                        data-pk="${ingredient.id}"
-                        data-scale-url="/meals/ingredients/${ingredient.id}/scale/"
-                        value="${ingredient.quantity || ''}">
-                </span>
-                <span class="d-flex gap-1">
-                    <button class="btn btn-sm btn-outline-success py-0 px-2 btn-to-shopping"
-                        data-url="/meals/ingredients/${ingredient.id}/to-shopping/"
-                        data-name="${ingredient.name}" data-quantity="${ingredient.quantity}"
-                        title="In Einkaufsliste">+</button>
-                    <button class="btn btn-sm btn-outline-danger py-0 px-2 btn-delete-ingredient"
-                        data-url="/meals/ingredients/${ingredient.id}/delete/">✕</button>
-                </span>`;
-
-            if (existingLi) {
-                existingLi.innerHTML = liHTML;
-            } else {
-                const li = document.createElement("li");
-                li.className = "list-group-item d-flex justify-content-between align-items-center";
-                li.id = "ingredient-" + ingredient.id;
-                li.innerHTML = liHTML;
-                list.appendChild(li);
-            }
-            const dl = document.getElementById("item-suggestions");
-            if (dl && ![...dl.options].some(o => o.value.toLowerCase() === ingredient.name.toLowerCase())) {
-                const opt = document.createElement("option");
-                opt.value = ingredient.name;
-                dl.appendChild(opt);
-            }
-            this.reset();
-        });
-});
-
-// ── Zubereitung bearbeiten ──
-document.getElementById("btn-edit-instructions").addEventListener("click", () => {
-    document.getElementById("instructions-display").style.display = "none";
-    document.getElementById("instructions-edit").style.display = "";
-});
-document.getElementById("btn-cancel-instructions").addEventListener("click", () => {
-    document.getElementById("instructions-edit").style.display = "none";
-    document.getElementById("instructions-display").style.display = "";
-});
-document.getElementById("btn-save-instructions").addEventListener("click", () => {
-    const text = document.getElementById("instructions-textarea").value;
-    ajaxPostJSON(applyUrl, { instructions: text, ingredients: null, save_instructions_only: true })
-        .then(r => r.json())
-        .then(() => {
-            const display = document.getElementById("instructions-display");
-            const empty = document.getElementById("instructions-empty");
-            if (text.trim()) {
-                display.innerHTML = `<p style="white-space: pre-line;">${text.replace(/</g, "&lt;")}</p>`;
-            } else {
-                display.innerHTML = `<p class="text-muted" id="instructions-empty">Noch keine Zubereitung eingetragen.</p>`;
-            }
-            document.getElementById("instructions-edit").style.display = "none";
-            display.style.display = "";
-        });
-});
-
-// ── KI-Vorschläge ──
-document.getElementById("btn-ai-suggest").addEventListener("click", function () {
-    const btn = this;
-    const results = document.getElementById("ai-results");
-    btn.disabled = true;
-    btn.textContent = "Wird geladen…";
-    results.style.display = "";
-    results.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div> GPT denkt nach…</div>';
-
-    ajaxPost(aiSuggestUrl, new FormData())
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                results.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-                btn.disabled = false;
-                btn.textContent = "✨ 3 Vorschläge generieren";
-                return;
-            }
-            results.innerHTML = data.suggestions.map((s, i) => `
-                <div class="card mb-3 border-0 bg-light">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h6 class="fw-semibold mb-0">Variante ${i + 1}: ${s.variant}</h6>
-                            <button class="btn btn-success btn-sm btn-apply-suggestion flex-shrink-0 ms-2"
-                                data-index="${i}">Diese Version übernehmen</button>
-                        </div>
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <div class="fw-semibold small text-muted text-uppercase mb-1">Zutaten</div>
-                                <ul class="list-unstyled small mb-0">
-                                    ${s.ingredients.map(ing => `<li>· ${ing.name}${ing.quantity ? ` <span class="text-muted">${ing.quantity}</span>` : ""}</li>`).join("")}
-                                </ul>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="fw-semibold small text-muted text-uppercase mb-1">Zubereitung</div>
-                                <p class="small mb-0" style="white-space:pre-line;">${s.instructions.replace(/</g,"&lt;")}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join("");
-            btn.disabled = false;
-            btn.textContent = "✨ Neu generieren";
-
-            // Suggestions-Daten für Apply speichern
-            document.querySelectorAll(".btn-apply-suggestion").forEach(b => {
-                b.addEventListener("click", function () {
-                    const s = data.suggestions[parseInt(this.dataset.index)];
-                    if (!confirm(`Variante "${s.variant}" übernehmen? Bestehende Zutaten und Zubereitung werden ersetzt.`)) return;
-                    ajaxPostJSON(applyUrl, { ingredients: s.ingredients, instructions: s.instructions })
-                        .then(r => r.json())
-                        .then(res => {
-                            if (res.success) location.reload();
-                        });
-                });
-            });
-        })
-        .catch(() => {
-            results.innerHTML = '<div class="alert alert-danger">Fehler beim API-Aufruf.</div>';
-            btn.disabled = false;
-            btn.textContent = "✨ 3 Vorschläge generieren";
-        });
-});
-
-// ── Zutat in Einkaufsliste ──
-document.addEventListener("click", function (e) {
-    const toShoppingBtn = e.target.closest(".btn-to-shopping");
-    if (toShoppingBtn) {
-        e.preventDefault();
-        ajaxPost(toShoppingBtn.dataset.url, new FormData())
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === "added") {
-                    toShoppingBtn.textContent = "✓";
-                    toShoppingBtn.classList.replace("btn-outline-success", "btn-success");
-                    toShoppingBtn.disabled = true;
-                } else if (data.status === "duplicate") {
-                    document.getElementById("modal-name").textContent = data.name;
-                    document.getElementById("modal-existing-qty").textContent = data.existing_quantity || "keine Angabe";
-                    document.getElementById("modal-new-qty").textContent = data.new_quantity || "keine Angabe";
-                    const mergeBtn = document.getElementById("btn-merge");
-                    mergeBtn.onclick = () => {
-                        const body = new FormData();
-                        body.append("extra_quantity", data.new_quantity);
-                        ajaxPost(`/meals/shopping/${data.existing_id}/merge/`, body)
-                            .then(r => r.json())
-                            .then(() => {
-                                duplicateModal.hide();
-                                toShoppingBtn.textContent = "✓";
-                                toShoppingBtn.classList.replace("btn-outline-success", "btn-success");
-                                toShoppingBtn.disabled = true;
-                            });
-                    };
-                    duplicateModal.show();
-                }
-            });
-    }
-
-    const deleteBtn = e.target.closest(".btn-delete-ingredient");
-    if (deleteBtn) {
-        e.preventDefault();
-        ajaxPost(deleteBtn.dataset.url, new FormData())
-            .then(r => r.json())
-            .then(data => {
-                if (!data.deleted) return;
-                deleteBtn.closest("li").remove();
-                const list = document.getElementById("ingredient-list");
-                if (list.children.length === 0) {
-                    list.innerHTML = '<li class="list-group-item text-muted" id="empty-ingredients">Noch keine Zutaten hinzugefügt.</li>';
-                }
-            });
-    }
-
-    // Click on quantity → show input
-    const qtyDisplay = e.target.closest(".qty-display");
-    if (qtyDisplay) {
-        const pk = qtyDisplay.dataset.pk;
-        const input = document.querySelector(`.qty-input[data-pk="${pk}"]`);
-        qtyDisplay.classList.add("d-none");
-        input.classList.remove("d-none");
-        input.focus();
-        input.select();
-    }
-});
-
-function applyScaleResult(ingredients) {
-    ingredients.forEach(ing => {
-        const display = document.querySelector(`.qty-display[data-pk="${ing.id}"]`);
-        const input = document.querySelector(`.qty-input[data-pk="${ing.id}"]`);
-        if (display) display.textContent = ing.quantity || "—";
-        if (input) input.value = ing.quantity || "";
-        // Also update data-quantity on the to-shopping button
-        const li = document.getElementById("ingredient-" + ing.id);
-        if (li) {
-            const btn = li.querySelector(".btn-to-shopping");
-            if (btn) btn.dataset.quantity = ing.quantity || "";
+    // ── Alle Zutaten in die Einkaufsliste ──
+    const btnAll = document.getElementById("btn-all-to-shopping");
+    btnAll.addEventListener("click", async () => {
+        btnAll.disabled = true;
+        setLabel(btnAll, "Wird übertragen…");
+        try {
+            const data = await wochii.post(allToShoppingUrl, new FormData());
+            const msg = data.added === 0 && data.merged === 0
+                ? "Keine Zutaten vorhanden."
+                : `${data.added} hinzugefügt${data.merged > 0 ? `, ${data.merged} zusammengeführt` : ""}.`;
+            // Bleibt gesperrt: ein zweiter Klick würde die Mengen verdoppeln.
+            setLabel(btnAll, "✓ " + msg);
+            btnAll.classList.replace("btn-outline-success", "btn-success");
+        } catch (err) {
+            setLabel(btnAll, "Alle in Einkaufsliste");
+            btnAll.disabled = false;
         }
     });
-}
 
-// Confirm quantity edit on Enter or blur
-document.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" && e.target.classList.contains("qty-input")) {
-        e.target.blur();
+    // ── Zutatenzeilen ──
+    function setQuantity(row, quantity) {
+        row.dataset.quantity = quantity || "";
+        row.querySelector(".qty-value").textContent = quantity || "—";
     }
-    if (e.key === "Escape" && e.target.classList.contains("qty-input")) {
-        const input = e.target;
-        const display = document.querySelector(`.qty-display[data-pk="${input.dataset.pk}"]`);
-        input.classList.add("d-none");
-        display.classList.remove("d-none");
+
+    function fillRow(row, ing) {
+        row.id = "ingredient-" + ing.id;
+        row.dataset.name = ing.name;
+        row.dataset.scaleUrl = ing.scale_url;
+        row.dataset.shoppingUrl = ing.shopping_url;
+        row.dataset.deleteUrl = ing.delete_url;
+        row.querySelector(".ingredient-name").textContent = ing.name;
+        row.querySelector(".btn-to-shopping").setAttribute("aria-label", ing.name + " auf die Einkaufsliste");
+        row.querySelector(".btn-delete-ingredient").setAttribute("aria-label", ing.name + " entfernen");
+        setQuantity(row, ing.quantity);
     }
-});
 
-document.addEventListener("focusout", function (e) {
-    if (!e.target.classList.contains("qty-input")) return;
-    const input = e.target;
-    const display = document.querySelector(`.qty-display[data-pk="${input.dataset.pk}"]`);
-    const newQty = input.value.trim();
+    function addNameSuggestion(name) {
+        const dl = document.getElementById("item-suggestions");
+        if (dl && ![...dl.options].some(o => o.value.toLowerCase() === name.toLowerCase())) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            dl.appendChild(opt);
+        }
+    }
 
-    input.classList.add("d-none");
-    display.classList.remove("d-none");
+    // ── Zutat zum Rezept hinzufügen ──
+    const ingredientForm = document.getElementById("ingredient-form");
+    ingredientForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const submit = ingredientForm.querySelector("[type=submit]");
+        submit.disabled = true;
+        try {
+            const ing = await wochii.post(addIngredientUrl, new FormData(ingredientForm));
+            document.getElementById("empty-ingredients")?.remove();
+            let row = document.getElementById("ingredient-" + ing.id);
+            if (!row) {
+                row = rowTemplate.content.firstElementChild.cloneNode(true);
+                list.appendChild(row);
+            }
+            fillRow(row, ing);
+            addNameSuggestion(ing.name);
+            ingredientForm.reset();
+            ingredientForm.querySelector("input[name=name]").focus();
+        } catch (err) {
+            // Meldung kommt von wochii.post; die Eingaben bleiben stehen.
+        } finally {
+            submit.disabled = false;
+        }
+    });
 
-    if (newQty === (display.textContent.trim() === "—" ? "" : display.textContent.trim())) return;
+    // ── Menge ändern (standardmäßig nur diese Zutat) ──
+    const editorHome = document.getElementById("qty-editor-home");
+    const editor = document.getElementById("qty-editor");
+    const editorInput = document.getElementById("qty-editor-input");
+    const editorScaleAll = document.getElementById("qty-editor-scale-all");
+    const editorLabel = document.getElementById("qty-editor-label");
+    const editorSubmit = editor.querySelector("[type=submit]");
+    let editingRow = null;
 
-    const body = new FormData();
-    body.append("quantity", newQty);
-    ajaxPost(input.dataset.scaleUrl, body)
-        .then(r => r.json())
-        .then(data => {
-            if (data.ingredients) applyScaleResult(data.ingredients);
+    function openQtyEditor(row) {
+        editingRow = row;
+        row.appendChild(editor);
+        editorLabel.textContent = "Menge für " + row.dataset.name;
+        editorInput.value = row.dataset.quantity || "";
+        editorScaleAll.checked = false;
+        editorInput.focus();
+        editorInput.select();
+    }
+
+    function closeQtyEditor(restoreFocus) {
+        const row = editingRow;
+        editingRow = null;
+        editorHome.appendChild(editor);
+        if (restoreFocus && row && row.isConnected) row.querySelector(".qty-display").focus();
+    }
+
+    document.getElementById("qty-editor-cancel").addEventListener("click", () => closeQtyEditor(true));
+    editor.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            closeQtyEditor(true);
+        }
+    });
+
+    editor.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const row = editingRow;
+        if (!row) return;
+        if (!editorScaleAll.checked && editorInput.value.trim() === (row.dataset.quantity || "")) {
+            closeQtyEditor(true);
+            return;
+        }
+        editorSubmit.disabled = true;
+        try {
+            const data = await wochii.post(row.dataset.scaleUrl, new FormData(editor));
+            data.ingredients.forEach(ing => {
+                const target = document.getElementById("ingredient-" + ing.id);
+                if (target) setQuantity(target, ing.quantity);
+            });
+            closeQtyEditor(true);
+            if (data.status === "scaled") wochii.toast("Alle Mengen wurden umgerechnet.");
+        } catch (err) {
+            // Meldung kommt von wochii.post (z. B. "Zum Umrechnen muss die Menge größer als 0 sein.").
+            // Der gesperrte Button hat den Fokus verloren – zurück ins Feld zum Korrigieren.
+            editorInput.focus();
+        } finally {
+            editorSubmit.disabled = false;
+        }
+    });
+
+    // ── Einkaufsliste / Löschen / Menge: Klicks in der Zutatenliste ──
+    function markAdded(row, button) {
+        button.textContent = "✓";
+        button.classList.replace("btn-outline-success", "btn-success");
+        button.disabled = true;
+        button.setAttribute("aria-label", row.dataset.name + " steht auf der Einkaufsliste");
+    }
+
+    function showDuplicate(row, button, data) {
+        document.getElementById("modal-name").textContent = data.name;
+        document.getElementById("modal-existing-qty").textContent = data.existing_quantity || "keine Angabe";
+        document.getElementById("modal-new-qty").textContent = data.new_quantity || "keine Angabe";
+        const mergeBtn = document.getElementById("btn-merge");
+        mergeBtn.onclick = async () => {
+            mergeBtn.disabled = true;
+            const body = new FormData();
+            body.append("extra_quantity", data.new_quantity || "");
+            try {
+                await wochii.post(data.merge_url, body);
+                duplicateModal.hide();
+                markAdded(row, button);
+            } catch (err) {
+                // Meldung kommt von wochii.post; der Dialog bleibt offen.
+            } finally {
+                mergeBtn.disabled = false;
+            }
+        };
+        duplicateModal.show();
+    }
+
+    async function addToShopping(row, button) {
+        button.disabled = true;
+        try {
+            const data = await wochii.post(row.dataset.shoppingUrl, new FormData());
+            if (data.status === "added") {
+                markAdded(row, button);
+                return;
+            }
+            button.disabled = false;
+            if (data.status === "duplicate") showDuplicate(row, button, data);
+        } catch (err) {
+            button.disabled = false;
+        }
+    }
+
+    async function deleteIngredient(row, button) {
+        button.disabled = true;
+        try {
+            await wochii.post(row.dataset.deleteUrl, new FormData());
+            if (editingRow === row) closeQtyEditor(false);
+            row.remove();
+            if (!list.querySelector(".ingredient-row")) {
+                const empty = el("li", "list-group-item text-muted", "Noch keine Zutaten hinzugefügt.");
+                empty.id = "empty-ingredients";
+                list.appendChild(empty);
+            }
+        } catch (err) {
+            button.disabled = false;
+        }
+    }
+
+    list.addEventListener("click", (e) => {
+        const row = e.target.closest(".ingredient-row");
+        if (!row) return;
+        const shoppingBtn = e.target.closest(".btn-to-shopping");
+        const deleteBtn = e.target.closest(".btn-delete-ingredient");
+        if (shoppingBtn) addToShopping(row, shoppingBtn);
+        else if (deleteBtn) deleteIngredient(row, deleteBtn);
+        else if (e.target.closest(".qty-display")) openQtyEditor(row);
+    });
+
+    // ── Zubereitung bearbeiten ──
+    const instructionsDisplay = document.getElementById("instructions-display");
+    const instructionsEdit = document.getElementById("instructions-edit");
+    const instructionsTextarea = document.getElementById("instructions-textarea");
+    const btnSaveInstructions = document.getElementById("btn-save-instructions");
+
+    document.getElementById("btn-edit-instructions").addEventListener("click", () => {
+        instructionsDisplay.style.display = "none";
+        instructionsEdit.style.display = "";
+        instructionsTextarea.focus();
+    });
+    document.getElementById("btn-cancel-instructions").addEventListener("click", () => {
+        instructionsEdit.style.display = "none";
+        instructionsDisplay.style.display = "";
+    });
+    btnSaveInstructions.addEventListener("click", async () => {
+        const text = instructionsTextarea.value;
+        btnSaveInstructions.disabled = true;
+        try {
+            await postJSON(applyUrl, { instructions: text, ingredients: null, save_instructions_only: true });
+            const p = text.trim()
+                ? el("p", "", text)
+                : el("p", "text-muted", "Noch keine Zubereitung eingetragen.");
+            if (text.trim()) p.style.whiteSpace = "pre-line";
+            instructionsDisplay.replaceChildren(p);
+            instructionsEdit.style.display = "none";
+            instructionsDisplay.style.display = "";
+        } catch (err) {
+            // Meldung kommt von wochii.post; der Text bleibt im Eingabefeld.
+        } finally {
+            btnSaveInstructions.disabled = false;
+        }
+    });
+
+    // ── KI-Vorschläge ──
+    const btnAi = document.getElementById("btn-ai-suggest");
+    const aiResults = document.getElementById("ai-results");
+
+    async function applySuggestion(suggestion, button) {
+        const name = suggestion.variant ? `Variante „${suggestion.variant}“` : "Diese Variante";
+        if (!confirm(`${name} übernehmen? Bestehende Zutaten und Zubereitung werden ersetzt.`)) return;
+        button.disabled = true;
+        try {
+            await postJSON(applyUrl, { ingredients: suggestion.ingredients, instructions: suggestion.instructions });
+            location.reload();
+        } catch (err) {
+            button.disabled = false;
+        }
+    }
+
+    function renderSuggestion(suggestion, index) {
+        const card = el("div", "card mb-3 border-0 bg-light");
+        const body = el("div", "card-body");
+
+        const head = el("div", "d-flex justify-content-between align-items-start mb-3");
+        const title = `Variante ${index + 1}` + (suggestion.variant ? `: ${suggestion.variant}` : "");
+        const applyBtn = el("button", "btn btn-success btn-sm flex-shrink-0 ms-2", "Diese Version übernehmen");
+        applyBtn.type = "button";
+        applyBtn.addEventListener("click", () => applySuggestion(suggestion, applyBtn));
+        head.append(el("h3", "h6 fw-semibold mb-0", title), applyBtn);
+
+        const ingredientList = el("ul", "list-unstyled small mb-0");
+        suggestion.ingredients.forEach(ing => {
+            const item = el("li", "", "· " + ing.name);
+            if (ing.quantity) item.append(" ", el("span", "text-muted", ing.quantity));
+            ingredientList.appendChild(item);
         });
-});
+        const ingredientCol = el("div", "col-md-4");
+        ingredientCol.append(el("div", "fw-semibold small text-muted text-uppercase mb-1", "Zutaten"), ingredientList);
+
+        const instructions = el("p", "small mb-0", suggestion.instructions);
+        instructions.style.whiteSpace = "pre-line";
+        const instructionsCol = el("div", "col-md-8");
+        instructionsCol.append(el("div", "fw-semibold small text-muted text-uppercase mb-1", "Zubereitung"), instructions);
+
+        const columns = el("div", "row g-3");
+        columns.append(ingredientCol, instructionsCol);
+        body.append(head, columns);
+        card.appendChild(body);
+        return card;
+    }
+
+    btnAi.addEventListener("click", async () => {
+        btnAi.disabled = true;
+        setLabel(btnAi, "Wird geladen…");
+        const loading = el("div", "text-center py-4");
+        const spinner = el("div", "spinner-border spinner-border-sm text-secondary");
+        spinner.setAttribute("aria-hidden", "true");
+        loading.append(spinner, " KI denkt nach…");
+        aiResults.replaceChildren(loading);
+        aiResults.style.display = "";
+        try {
+            const data = await wochii.post(aiSuggestUrl, new FormData());
+            aiResults.replaceChildren(...data.suggestions.map(renderSuggestion));
+            setLabel(btnAi, "Neu generieren");
+        } catch (err) {
+            const message = (err.data && err.data.error) || "Die KI-Vorschläge konnten nicht geladen werden.";
+            aiResults.replaceChildren(el("div", "alert alert-danger mb-0", message));
+            setLabel(btnAi, "3 Vorschläge generieren");
+        } finally {
+            btnAi.disabled = false;
+        }
+    });
+})();
 </script>
 {% endblock %}
