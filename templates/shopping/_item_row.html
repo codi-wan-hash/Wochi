@@ -1,0 +1,15 @@
+<li class="shop-item{% if item.is_bought %} is-bought{% endif %}" id="item-{{ item.pk }}"
+    data-id="{{ item.pk }}" data-name="{{ item.name }}" data-quantity="{{ item.quantity }}">
+    <button type="button" class="shop-item-toggle" data-url="{% url 'shopping_toggle_bought' item.pk %}"
+            aria-pressed="{{ item.is_bought|yesno:'true,false' }}">
+        <span class="shop-check" aria-hidden="true"></span>
+        <span class="shop-item-text">
+            <span class="shop-item-name">{{ item.name }}</span>
+            {% if item.quantity %}<span class="shop-item-qty">{{ item.quantity }}</span>{% endif %}
+            {% if item.added_by %}<span class="shop-item-by">{{ item.added_by.username }}</span>{% endif %}
+        </span>
+    </button>
+    <a class="shop-item-action" href="{% url 'shopping_update' item.pk %}" aria-label="„{{ item.name }}“ bearbeiten">✏</a>
+    <button type="button" class="shop-item-action shop-item-delete" data-url="{% url 'shopping_delete' item.pk %}"
+            aria-label="„{{ item.name }}“ löschen">✕</button>
+</li>

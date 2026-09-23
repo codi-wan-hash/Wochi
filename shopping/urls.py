@@ -5,6 +5,7 @@ from .views import (
     shopping_update,
     shopping_delete,
     shopping_toggle_bought,
+    shopping_clear_bought,
     shopping_merge_quantity,
     start_shopping,
     end_shopping,
@@ -13,6 +14,7 @@ from .views import (
 urlpatterns = [
     path("", shopping_list, name="shopping_list"),
     path("new/", shopping_create, name="shopping_create"),
+    path("clear-bought/", shopping_clear_bought, name="shopping_clear_bought"),
     path("<int:pk>/edit/", shopping_update, name="shopping_update"),
     path("<int:pk>/delete/", shopping_delete, name="shopping_delete"),
     path("<int:pk>/toggle/", shopping_toggle_bought, name="shopping_toggle_bought"),

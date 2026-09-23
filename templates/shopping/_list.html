@@ -1,0 +1,19 @@
+<div id="shopping-list-body" data-open-count="{{ open_items|length }}" data-bought-count="{{ bought_items|length }}">
+    <ul class="shop-list" id="open-items" aria-label="Offene Artikel">
+        {% for item in open_items %}{% include "shopping/_item_row.html" %}{% endfor %}
+    </ul>
+    <p class="shop-empty" id="open-empty" {% if open_items %}hidden{% endif %}>
+        {% if bought_items %}Alles erledigt.{% else %}Die Einkaufsliste ist leer – oben einfach lostippen.{% endif %}
+    </p>
+
+    <details class="shop-bought" id="bought-section" {% if not bought_items %}hidden{% endif %} {% if active_session %}open{% endif %}>
+        <summary>Erledigt (<span id="bought-count">{{ bought_items|length }}</span>)</summary>
+        <ul class="shop-list" id="bought-items" aria-label="Erledigte Artikel">
+            {% for item in bought_items %}{% include "shopping/_item_row.html" %}{% endfor %}
+        </ul>
+        <form method="post" action="{% url 'shopping_clear_bought' %}" class="shop-clear" id="clear-bought-form">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Erledigte entfernen</button>
+        </form>
+    </details>
+</div>

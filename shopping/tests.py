@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from households.models import Household
-from .models import ShoppingItem
+from .models import FrequentItem, ShoppingItem, ShoppingSession, Store, StoreItemOrder
 
 User = get_user_model()
 
@@ -71,11 +71,135 @@ class ShoppingViewTest(TestCase):
             response, "/accounts/login/?next=/shopping/", fetch_redirect_response=False
         )
 
-    def test_grid_column_class_stays_col_md_6(self):
-        """Das Inline-JS in shopping_list.html selektiert
-        '#shopping-list > .col-md-6' und '.closest(".col-md-6")'. Wird die
-        Spaltenklasse beim Mobile-Umbau ersetzt, brechen Filter,
-        Gekauft-Toggle und Löschen still.
-        """
+    def test_list_keeps_ids_used_by_shopping_js(self):
+        """static/js/shopping.js greift über diese IDs auf die Liste zu.
+        Werden sie beim Umbau umbenannt, brechen Abhaken, Hinzufügen und
+        Rückgängig still."""
         self._create_item()
-        self.assertContains(self.client.get("/shopping/"), 'class="col-md-6"')
+        response = self.client.get("/shopping/")
+        for marker in ('id="shopping-list-body"', 'id="open-items"', 'id="bought-items"',
+                       'id="bought-section"', 'id="quick-add"', 'id="id_name"', 'id="id_quantity"',
+                       'id="clear-bought-form"', "js/shopping.js"):
+            self.assertContains(response, marker)
+
+    def test_edit_updates_item_instead_of_creating_duplicate(self):
+        item = self._create_item()
+        response = self.client.post(f"/shopping/{item.pk}/edit/", {"name": "Hafermilch", "quantity": "2 L"})
+        self.assertRedirects(response, "/shopping/", fetch_redirect_response=False)
+        item.refresh_from_db()
+        self.assertEqual((item.name, item.quantity), ("Hafermilch", "2 L"))
+        self.assertEqual(ShoppingItem.objects.count(), 1)
+
+    def test_edit_page_does_not_post_to_create_url(self):
+        item = self._create_item()
+        self.assertNotContains(self.client.get(f"/shopping/{item.pk}/edit/"), "createUrl")
+
+    def test_toggle_and_end_require_post(self):
+        item = self._create_item()
+        self.assertEqual(self.client.get(f"/shopping/{item.pk}/toggle/").status_code, 405)
+        self.assertEqual(self.client.get("/shopping/end/").status_code, 405)
+        item.refresh_from_db()
+        self.assertFalse(item.is_bought)
+
+    def test_end_shopping_removes_bought_items(self):
+        store = Store.objects.create(household=self.household, name="Rewe")
+        ShoppingSession.objects.create(household=self.household, store=store, started_by=self.user)
+        bought = self._create_item("Brot")
+        bought.is_bought = True
+        bought.save()
+        self._create_item("Käse")
+        response = self.client.post("/shopping/end/", follow=True)
+        self.assertContains(response, "1 erledigte Artikel")
+        self.assertEqual(list(ShoppingItem.objects.values_list("name", flat=True)), ["Käse"])
+        self.assertFalse(ShoppingSession.objects.filter(ended_at__isnull=True).exists())
+
+    def test_clear_bought_via_ajax(self):
+        bought = self._create_item("Brot")
+        bought.is_bought = True
+        bought.save()
+        response = self.client.post("/shopping/clear-bought/", headers={"x-requested-with": "XMLHttpRequest"})
+        self.assertEqual(response.json(), {"removed": 1})
+
+    def test_readding_bought_item_puts_it_back_on_the_list(self):
+        bought = self._create_item("Brot")
+        bought.is_bought = True
+        bought.save()
+        self.client.post("/shopping/new/", {"name": "brot", "quantity": "2"},
+                         headers={"x-requested-with": "XMLHttpRequest"})
+        bought.refresh_from_db()
+        self.assertFalse(bought.is_bought)
+        self.assertEqual(bought.quantity, "2")
+        self.assertEqual(ShoppingItem.objects.count(), 1)
+
+    def test_ajax_add_returns_escaped_row(self):
+        response = self.client.post("/shopping/new/", {"name": "<img src=x onerror=alert(1)>", "quantity": ""},
+                                    headers={"x-requested-with": "XMLHttpRequest"})
+        html = response.json()["html"]
+        self.assertNotIn("<img", html)
+        self.assertIn("&lt;img", html)
+
+    def test_partial_returns_only_list(self):
+        self._create_item()
+        response = self.client.get("/shopping/?partial=1")
+        self.assertContains(response, 'id="shopping-list-body"')
+        self.assertNotContains(response, "<html")
+
+    def test_new_store_with_too_long_name_shows_error(self):
+        response = self.client.post("/shopping/start/", {"action": "new", "name": "x" * 201, "location": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Store.objects.exists())
+        self.assertFalse(ShoppingSession.objects.exists())
+
+    def test_toggle_learns_store_order_during_session(self):
+        store = Store.objects.create(household=self.household, name="Rewe")
+        ShoppingSession.objects.create(household=self.household, store=store, started_by=self.user)
+        item = self._create_item("Äpfel")
+        self.client.post(f"/shopping/{item.pk}/toggle/", headers={"x-requested-with": "XMLHttpRequest"})
+        self.assertTrue(StoreItemOrder.objects.filter(store=store, item_name="äpfel").exists())
+
+    def test_list_query_count_does_not_grow_with_items(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self._create_item("Erster")
+        self.client.get("/shopping/")  # Session warm
+        with CaptureQueriesContext(connection) as one_item:
+            self.client.get("/shopping/")
+        for n in range(10):
+            self._create_item(f"Artikel {n}")
+        with CaptureQueriesContext(connection) as many_items:
+            self.client.get("/shopping/")
+        self.assertEqual(len(many_items), len(one_item))
+
+
+class ShoppingServicesTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="dienst", password="pw123456")
+        self.household = Household.objects.create(name="Dienst")
+        self.household.members.add(self.user)
+
+    def test_frequent_items_are_counted_and_capped(self):
+        from . import services
+        ShoppingItem.objects.create(household=self.household, name="Milch", added_by=self.user)
+        ShoppingItem.objects.create(household=self.household, name="milch ", added_by=self.user)
+        entry = FrequentItem.objects.get(household=self.household)
+        self.assertEqual((entry.name_key, entry.times_added), ("milch", 2))
+        with self.settings():
+            original = services.FREQUENT_ITEMS_LIMIT
+            services.FREQUENT_ITEMS_LIMIT = 3
+            try:
+                for n in range(5):
+                    services.record_frequent_item(self.household, f"Neu {n}")
+            finally:
+                services.FREQUENT_ITEMS_LIMIT = original
+        self.assertEqual(FrequentItem.objects.filter(household=self.household).count(), 3)
+
+    def test_add_ingredients_merges_with_open_items(self):
+        from . import services
+        ShoppingItem.objects.create(household=self.household, name="Mehl", quantity="200 g", added_by=self.user)
+        added, merged = services.add_ingredients(
+            self.household, self.user, [("mehl", "300 g"), ("Eier", "3"), ("Eier", "2"), ("", "1")]
+        )
+        self.assertEqual((added, merged), (1, 2))
+        self.assertEqual(ShoppingItem.objects.get(name="Mehl").quantity, "500 g")
+        self.assertEqual(ShoppingItem.objects.get(name="Eier").quantity, "5")

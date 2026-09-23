@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Einkauf starten · Wochii{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-7 col-lg-5">
@@ -7,18 +9,15 @@
         <div class="mb-4">
             <a href="{% url 'shopping_list' %}" class="text-muted text-decoration-none small">← Einkaufsliste</a>
             <h1 class="h2 mb-0 mt-1">Einkauf starten</h1>
+            <p class="text-muted small mb-0 mt-1">Wochii merkt sich, in welcher Reihenfolge du im Laden abhakst, und sortiert die Liste beim nächsten Mal danach.</p>
         </div>
-
-        {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
-        {% endif %}
 
         {% if stores %}
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold">Bekannter Laden</div>
                 <div class="list-group list-group-flush">
                     {% for store in stores %}
-                        <form method="post" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3">
+                        <form method="post" class="list-group-item d-flex justify-content-between align-items-center p-3">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="select">
                             <input type="hidden" name="store_id" value="{{ store.pk }}">
@@ -38,16 +37,18 @@
         <div class="card shadow-sm">
             <div class="card-header fw-semibold">Neuer Laden</div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" novalidate>
                     {% csrf_token %}
                     <input type="hidden" name="action" value="new">
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold">Name</label>
-                        <input type="text" name="name" class="form-control" placeholder="z.B. Rewe" required>
+                        <label class="form-label small fw-semibold" for="{{ form.name.id_for_label }}">Name</label>
+                        {{ form.name }}
+                        {% for error in form.name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-semibold">Ort <span class="text-muted fw-normal">(optional)</span></label>
-                        <input type="text" name="location" class="form-control" placeholder="z.B. Musterstadt">
+                        <label class="form-label small fw-semibold" for="{{ form.location.id_for_label }}">Ort <span class="text-muted fw-normal">(optional)</span></label>
+                        {{ form.location }}
+                        {% for error in form.location.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
                     <button type="submit" class="btn btn-dark w-100">Einkauf starten</button>
                 </form>

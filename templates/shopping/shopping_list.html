@@ -1,170 +1,51 @@
 {% extends "base.html" %}
+{% load static %}
+
+{% block title %}Einkaufsliste · Wochii{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="shop-header">
     <div>
-        <h1 class="h2 mb-1">Einkaufsliste</h1>
+        <h1 class="h2 mb-0">Einkaufsliste</h1>
         <p class="text-muted mb-0">Für {{ household.name }}</p>
     </div>
-    <a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>
+    {% if not active_session %}
+        <a href="{% url 'start_shopping' %}" class="btn btn-outline-dark btn-sm">🛒 Einkauf starten</a>
+    {% endif %}
 </div>
 
 {% if active_session %}
-    <div class="alert d-flex justify-content-between align-items-center py-2 mb-4" style="background:#fff8e6; border:1.5px solid #f5a623;">
+    <div class="shop-session" role="status">
         <span>
-            🛒 <strong>Einkauf läuft</strong> · {{ active_session.store }}
-            <small class="text-muted ms-2">gestartet {{ active_session.started_at|date:"H:i" }} Uhr</small>
+            <strong>Einkauf läuft</strong> · {{ active_session.store }}
+            <small class="text-muted">seit {{ active_session.started_at|date:"H:i" }} Uhr</small>
         </span>
-        <form method="post" action="{% url 'end_shopping' %}" class="mb-0">
+        <form method="post" action="{% url 'end_shopping' %}" class="mb-0"
+              data-confirm="Einkauf beenden? Erledigte Artikel werden dabei von der Liste entfernt.">
             {% csrf_token %}
-            <button type="submit" class="btn btn-sm btn-outline-dark">Einkauf beenden</button>
+            <button type="submit" class="btn btn-sm btn-dark">Einkauf beenden</button>
         </form>
     </div>
-{% else %}
-    <div class="mb-3">
-        <a href="{% url 'start_shopping' %}" class="btn btn-success btn-sm">🛒 Einkauf starten</a>
-    </div>
 {% endif %}
 
-<div class="mb-4">
-    <button class="btn btn-outline-secondary btn-sm active" data-filter="all">Alle</button>
-    <button class="btn btn-outline-secondary btn-sm" data-filter="open">Offen</button>
-    <button class="btn btn-outline-secondary btn-sm" data-filter="bought">Gekauft</button>
-</div>
+<datalist id="item-suggestions">
+    {% for name in suggestions %}<option value="{{ name }}">{% endfor %}
+</datalist>
 
-{% if items %}
-    <div class="row g-3" id="shopping-list">
-        {% for item in items %}
-            <div class="col-md-6" id="item-{{ item.pk }}" data-bought="{{ item.is_bought|yesno:'true,false' }}">
-                <div class="card shadow-sm h-100 {% if item.is_bought %}border-success{% endif %}">
-                    <div class="card-body">
-                        <h5 class="card-title mb-2 {% if item.is_bought %}text-decoration-line-through text-muted{% endif %}">
-                            {{ item.name }}
-                        </h5>
+<form class="shop-add" id="quick-add" method="post" action="{% url 'shopping_create' %}" autocomplete="off">
+    {% csrf_token %}
+    <label class="visually-hidden" for="id_name">Artikel</label>
+    <input type="text" name="name" id="id_name" class="form-control" list="item-suggestions"
+           placeholder="Artikel hinzufügen …" maxlength="200" required enterkeyhint="done" autocapitalize="sentences">
+    <label class="visually-hidden" for="id_quantity">Menge</label>
+    <input type="text" name="quantity" id="id_quantity" class="form-control shop-add-qty"
+           placeholder="Menge" maxlength="100" enterkeyhint="done">
+    <button type="submit" class="btn btn-dark" aria-label="Hinzufügen">+</button>
+</form>
 
-                        {% if item.quantity %}
-                            <p class="card-text text-muted mb-2">Menge: {{ item.quantity }}</p>
-                        {% endif %}
+{% include "shopping/_list.html" %}
+{% endblock %}
 
-                        <p class="small text-muted">Hinzugefügt von: {{ item.added_by }}</p>
-
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button
-                                class="btn btn-sm btn-success btn-toggle"
-                                data-url="{% url 'shopping_toggle_bought' item.pk %}"
-                                data-bought="{{ item.is_bought|yesno:'true,false' }}">
-                                {% if not item.is_bought %}Als gekauft markieren{% else %}Wieder offen{% endif %}
-                            </button>
-                            <a href="{% url 'shopping_update' item.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
-                            <button
-                                class="btn btn-sm btn-outline-danger btn-delete"
-                                data-url="{% url 'shopping_delete' item.pk %}"
-                                data-name="{{ item.name }}">
-                                Löschen
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {% endfor %}
-    </div>
-{% else %}
-    <div class="card border-0 shadow-sm rounded-4" id="empty-message">
-        <div class="card-body p-5 text-center">
-            <p class="text-muted mb-3">Die Einkaufsliste ist leer.</p>
-            <a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>
-        </div>
-    </div>
-{% endif %}
-
-<script>
-const csrfToken = "{{ csrf_token }}";
-let currentFilter = "all";
-
-function applyFilter(filter) {
-    const cards = document.querySelectorAll("#shopping-list > .col-md-6");
-    let visible = 0;
-    cards.forEach(card => {
-        const bought = card.dataset.bought === "true";
-        const show = filter === "all" || (filter === "bought" && bought) || (filter === "open" && !bought);
-        card.style.display = show ? "" : "none";
-        if (show) visible++;
-    });
-    const empty = document.getElementById("empty-message");
-    if (empty) empty.style.display = visible === 0 ? "" : "none";
-}
-
-function ajaxPost(url) {
-    return fetch(url, {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": csrfToken,
-            "X-Requested-With": "XMLHttpRequest",
-        },
-    });
-}
-
-document.addEventListener("click", function (e) {
-    const toggleBtn = e.target.closest(".btn-toggle");
-    if (toggleBtn) {
-        e.preventDefault();
-        const url = toggleBtn.dataset.url;
-        ajaxPost(url)
-            .then(r => r.json())
-            .then(data => {
-                const card = toggleBtn.closest(".col-md-6");
-                const cardEl = card.querySelector(".card");
-                const title = card.querySelector(".card-title");
-
-                if (data.is_bought) {
-                    toggleBtn.textContent = "Wieder offen";
-                    cardEl.classList.add("border-success");
-                    title.classList.add("text-decoration-line-through", "text-muted");
-                } else {
-                    toggleBtn.textContent = "Als gekauft markieren";
-                    cardEl.classList.remove("border-success");
-                    title.classList.remove("text-decoration-line-through", "text-muted");
-                }
-                toggleBtn.dataset.bought = data.is_bought;
-                card.dataset.bought = data.is_bought;
-                applyFilter(currentFilter);
-            });
-    }
-
-    const filterBtn = e.target.closest("[data-filter]");
-    if (filterBtn) {
-        document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
-        filterBtn.classList.add("active");
-        currentFilter = filterBtn.dataset.filter;
-        applyFilter(currentFilter);
-    }
-
-    const deleteBtn = e.target.closest(".btn-delete");
-    if (deleteBtn) {
-        e.preventDefault();
-        const name = deleteBtn.dataset.name;
-        if (!confirm(`"${name}" wirklich löschen?`)) return;
-
-        const url = deleteBtn.dataset.url;
-        ajaxPost(url)
-            .then(r => r.json())
-            .then(data => {
-                if (data.deleted) {
-                    const card = deleteBtn.closest(".col-md-6");
-                    card.remove();
-
-                    const list = document.getElementById("shopping-list");
-                    if (list && list.children.length === 0) {
-                        list.insertAdjacentHTML("afterend",
-                            '<div class="card border-0 shadow-sm rounded-4"><div class="card-body p-5 text-center">' +
-                            '<p class="text-muted mb-3">Die Einkaufsliste ist leer.</p>' +
-                            '<a href="{% url 'shopping_create' %}" class="btn btn-dark">+ Artikel hinzufügen</a>' +
-                            '</div></div>');
-                        list.remove();
-                    }
-                }
-            });
-    }
-});
-</script>
+{% block scripts %}
+<script src="{% static 'js/shopping.js' %}"></script>
 {% endblock %}

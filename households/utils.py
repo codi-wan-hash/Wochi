@@ -111,12 +111,24 @@ def merge_quantities(q1, q2):
 
 
 def get_item_suggestions(household):
-    from shopping.models import ShoppingItem
+    """Artikelnamen für die Autovervollständigung.
+
+    Enthält auch Artikel, die längst gekauft und von der Liste entfernt
+    wurden (FrequentItem). Gleiche Namen in anderer Schreibweise erscheinen
+    nur einmal.
+    """
+    from shopping.models import FrequentItem, ShoppingItem
     from meals.models import Ingredient
 
-    shopping = ShoppingItem.objects.filter(household=household).values_list("name", flat=True)
-    ingredients = Ingredient.objects.filter(recipe__household=household).values_list("name", flat=True)
-    return sorted({n.strip() for n in list(shopping) + list(ingredients) if n.strip()}, key=str.lower)
+    names = list(FrequentItem.objects.filter(household=household).values_list("name", flat=True))
+    names += list(ShoppingItem.objects.filter(household=household).values_list("name", flat=True))
+    names += list(Ingredient.objects.filter(recipe__household=household).values_list("name", flat=True))
+    unique = {}
+    for name in names:
+        cleaned = name.strip()
+        if cleaned:
+            unique.setdefault(cleaned.lower(), cleaned)
+    return sorted(unique.values(), key=str.lower)
 
 
 def get_quantity_suggestions(household):
