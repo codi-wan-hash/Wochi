@@ -370,7 +370,15 @@ def task_toggle(request, pk):
         task = Task.objects.get(pk=pk, household=household)
     except Task.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
-    task.toggle(request.user)
+    # Neuere Apps schicken den gewünschten Status mit: mit einer veralteten
+    # Liste würde blindes Umschalten sonst die Änderung eines anderen
+    # rückgängig machen. Ohne "status" (ältere Apps) wird umgeschaltet.
+    target = request.data.get("status") if hasattr(request.data, "get") else None
+    if target in ("open", "done"):
+        if task.status != target:
+            task.set_status(target, request.user)
+    else:
+        task.toggle(request.user)
     return Response(TaskSerializer(task).data)
 
 

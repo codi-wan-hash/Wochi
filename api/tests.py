@@ -408,6 +408,17 @@ class TaskApiTest(ApiTestCase):
         self.assertEqual(follow_ups.get().due_date, date(2026, 9, 29))
         self.assertEqual(list(follow_ups.get().assigned_to.all()), [self.other])
 
+    def test_toggle_with_target_status_is_idempotent(self):
+        task = Task.objects.create(household=self.household, title="Bad putzen", due_date=date.today(),
+                                   status="done", created_by=self.user)
+        # Jemand anders hat schon erledigt; die App mit altem Stand will "done".
+        response = self.client.post(f"/api/tasks/{task.pk}/toggle/", {"status": "done"}, format="json")
+        self.assertEqual(response.data["status"], "done")
+        task.refresh_from_db()
+        self.assertEqual(task.status, "done")
+        # Ohne status (alte App) wird weiterhin umgeschaltet.
+        self.assertEqual(self.client.post(f"/api/tasks/{task.pk}/toggle/").data["status"], "open")
+
     def test_list_contains_all_open_tasks_even_with_many_done(self):
         for i in range(120):
             Task.objects.create(household=self.household, title=f"Alt {i}", due_date=date(2025, 1, 1),
