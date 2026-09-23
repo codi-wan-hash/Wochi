@@ -1,0 +1,51 @@
+<div class="col-md-6" id="task-{{ task.pk }}" data-task-id="{{ task.pk }}">
+    <article class="card shadow-sm h-100 task-card{% if task.status == 'done' %} border-success is-done{% elif group_key == 'overdue' %} is-overdue{% endif %}"
+             aria-labelledby="task-title-{{ task.pk }}">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <h3 class="h5 card-title mb-0{% if task.status == 'done' %} text-decoration-line-through text-muted{% endif %}" id="task-title-{{ task.pk }}">
+                    {{ task.title }}
+                </h3>
+                <span class="badge
+                    {% if task.priority == 'high' %}bg-danger
+                    {% elif task.priority == 'medium' %}bg-warning text-dark
+                    {% else %}bg-secondary{% endif %}">
+                    {{ task.get_priority_display }}
+                </span>
+            </div>
+
+            {% if task.description %}
+                <p class="card-text text-muted">{{ task.description|linebreaksbr }}</p>
+            {% endif %}
+
+            <ul class="list-unstyled small text-muted mb-3">
+                <li><strong>Fällig:</strong>
+                    <time datetime="{{ task.due_date|date:'Y-m-d' }}"{% if group_key == "overdue" %} class="task-due-overdue"{% endif %}>{{ task.due_date|date:"D, d.m.Y" }}</time>{% if group_key == "overdue" %} <span class="visually-hidden">(überfällig)</span>{% endif %}
+                </li>
+                <li><strong>Zugewiesen an:</strong>
+                    {% for person in task.assigned_to.all %}{{ person }}{% if not forloop.last %}, {% endif %}{% empty %}Niemand{% endfor %}
+                </li>
+                <li data-task-status><strong>Status:</strong> <span data-task-status-label>{{ task.get_status_display }}</span></li>
+                {% if task.recurrence != "none" %}
+                <li><strong>Wiederholung:</strong>
+                    <span class="badge task-recurrence"><span aria-hidden="true">↻</span> {{ task.get_recurrence_display }}</span>
+                </li>
+                {% endif %}
+                <li><strong>Angelegt von:</strong> {{ task.created_by|default:"–" }}</li>
+            </ul>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <form method="post" action="{% url 'task_toggle_status' task.pk %}" data-task-toggle>
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-success">
+                        {% if task.status == "open" %}Erledigen{% else %}Wieder öffnen{% endif %}<span class="visually-hidden">: {{ task.title }}</span>
+                    </button>
+                </form>
+                <a href="{% url 'task_update' task.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten<span class="visually-hidden">: {{ task.title }}</span></a>
+                {# Ohne Skript führt der Link zur Bestätigungsseite, mit Skript fragt confirm() nach. #}
+                <a href="{% url 'task_delete' task.pk %}" class="btn btn-sm btn-outline-danger"
+                   data-task-delete data-name="{{ task.title }}">Löschen<span class="visually-hidden">: {{ task.title }}</span></a>
+            </div>
+        </div>
+    </article>
+</div>

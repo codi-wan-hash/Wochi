@@ -1,176 +1,156 @@
 {% extends "base.html" %}
+{% load static %}
+
+{% block title %}Aufgaben · Wochii{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/tasks.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="h2 mb-1">Wochenaufgaben</h1>
-        <p class="text-muted mb-0">Aufgaben für {{ household.name }}</p>
+        <h1 class="h2 mb-1">Aufgaben</h1>
+        <p class="text-muted mb-0">{{ household.name }}</p>
     </div>
     <a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>
 </div>
 
-<div class="mb-4">
-    <button class="btn btn-outline-secondary btn-sm active" data-filter="all">Alle</button>
-    <button class="btn btn-outline-secondary btn-sm" data-filter="open">Offen</button>
-    <button class="btn btn-outline-secondary btn-sm" data-filter="done">Erledigt</button>
-</div>
-
-{% if tasks %}
-    <div class="row g-3" id="task-list">
-        {% for task in tasks %}
-            <div class="col-md-6" id="task-{{ task.pk }}" data-status="{{ task.status }}">
-                <div class="card shadow-sm h-100 {% if task.status == 'done' %}border-success{% endif %}">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h5 class="card-title {% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}">
-                                {{ task.title }}
-                            </h5>
-                            <span class="badge
-                                {% if task.priority == 'high' %}bg-danger
-                                {% elif task.priority == 'medium' %}bg-warning text-dark
-                                {% else %}bg-secondary{% endif %}">
-                                {{ task.get_priority_display }}
-                            </span>
-                        </div>
-
-                        {% if task.description %}
-                            <p class="card-text text-muted">{{ task.description }}</p>
-                        {% endif %}
-
-                        <ul class="list-unstyled small text-muted mb-3">
-                            <li><strong>Fällig:</strong> {{ task.due_date }}</li>
-                            <li><strong>Zugewiesen an:</strong>
-                                {% if task.assigned_to.all %}
-                                    {% for person in task.assigned_to.all %}{{ person }}{% if not forloop.last %}, {% endif %}{% endfor %}
-                                {% else %}
-                                    Niemand
-                                {% endif %}
-                            </li>
-                            <li><strong>Status:</strong> {{ task.get_status_display }}</li>
-                            {% if task.recurrence != "none" %}
-                            <li><strong>Wiederholung:</strong>
-                                <span class="badge bg-purple text-white" style="background-color:#7c3aed;">
-                                    ↻ {{ task.get_recurrence_display }}
-                                </span>
-                            </li>
-                            {% endif %}
-                        </ul>
-
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-sm btn-success btn-toggle"
-                                data-url="{% url 'task_toggle_status' task.pk %}"
-                                data-status="{{ task.status }}">
-                                {% if task.status == "open" %}Erledigen{% else %}Wieder öffnen{% endif %}
-                            </button>
-                            <a href="{% url 'task_update' task.pk %}" class="btn btn-sm btn-outline-primary">Bearbeiten</a>
-                            <button class="btn btn-sm btn-outline-danger btn-delete"
-                                data-url="{% url 'task_delete' task.pk %}"
-                                data-name="{{ task.title }}">
-                                Löschen
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+{# Filter als GET-Formular: funktioniert ohne Skript, der aktive Knopf ist markiert. #}
+<form method="get" class="mb-4">
+    <div role="group" aria-label="Aufgaben filtern">
+        {% for value, label in status_filters %}
+        <button type="submit" name="status" value="{{ value }}" data-filter="{{ value }}"
+                class="btn btn-outline-secondary btn-sm{% if value == status_filter %} active{% endif %}"
+                aria-pressed="{% if value == status_filter %}true{% else %}false{% endif %}">{{ label }}</button>
         {% endfor %}
     </div>
-{% else %}
-    <div class="card border-0 shadow-sm rounded-4" id="empty-message">
-        <div class="card-body p-5 text-center">
-            <p class="text-muted mb-3">Noch keine Aufgaben. Was steht an?</p>
-            <a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>
-        </div>
-    </div>
-{% endif %}
+</form>
 
+<div id="task-sections" class="task-sections" tabindex="-1">
+    {% include "tasks/_task_sections.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-const csrfToken = "{{ csrf_token }}";
-let currentFilter = "all";
+(function () {
+    "use strict";
+    const container = document.getElementById("task-sections");
+    // Ohne app.js bleiben die Formulare normale POST-Formulare.
+    if (!container || !window.wochii) return;
 
-function applyFilter(filter) {
-    const cards = document.querySelectorAll("#task-list > .col-md-6");
-    let visible = 0;
-    cards.forEach(card => {
-        const show = filter === "all" || card.dataset.status === filter;
-        card.style.display = show ? "" : "none";
-        if (show) visible++;
+    function findCard(id) {
+        return container.querySelector('[data-task-id="' + id + '"]');
+    }
+
+    // Während einer Anfrage keine zweite: Knöpfe sperren, Karte abdunkeln.
+    function setBusy(card, busy) {
+        if (!card) return;
+        card.classList.toggle("is-busy", busy);
+        card.querySelectorAll("button").forEach(function (button) { button.disabled = busy; });
+        card.querySelectorAll("a.btn").forEach(function (link) {
+            link.classList.toggle("disabled", busy);
+            if (busy) link.setAttribute("aria-disabled", "true");
+            else link.removeAttribute("aria-disabled");
+        });
+    }
+
+    // Listenbereiche neu vom Server holen: Karten wandern in die richtige
+    // Gruppe, Folgeaufgaben wiederkehrender Aufgaben erscheinen.
+    async function refreshList(focusTaskId) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("fragment", "1");
+        const doneSection = container.querySelector("[data-done-tasks]");
+        const doneOpen = doneSection ? doneSection.open : false;
+        const hadFocus = container.contains(document.activeElement);
+        try {
+            const response = await fetch(url, { credentials: "same-origin" });
+            if (!response.ok || response.redirected) return;
+            container.innerHTML = await response.text();
+        } catch (err) {
+            return;  // Kein Netz: die Liste bleibt, wie sie ist.
+        }
+        const freshDone = container.querySelector("[data-done-tasks]");
+        if (freshDone && doneOpen) freshDone.open = true;
+        if (hadFocus) {
+            // Tastaturnutzer nicht an den Seitenanfang werfen.
+            const card = focusTaskId ? findCard(focusTaskId) : null;
+            const target = card ? card.querySelector("[data-task-toggle] button") : null;
+            if (target && target.offsetParent !== null) target.focus({ preventScroll: true });
+            else container.focus({ preventScroll: true });
+        }
+    }
+
+    async function toggleTask(url, card, allowUndo) {
+        setBusy(card, true);
+        let data;
+        try {
+            data = await wochii.post(url);
+        } catch (err) {
+            setBusy(card, false);  // Fehlermeldung zeigt wochii.post selbst.
+            return;
+        }
+        const label = card ? card.querySelector("[data-task-status-label]") : null;
+        if (label) label.textContent = data.status_display;
+        await refreshList(data.id);
+        // Konnte die Liste nicht neu geladen werden, steht die alte Karte noch da.
+        if (card && card.isConnected) setBusy(card, false);
+        const options = {};
+        if (allowUndo) {
+            options.actionLabel = "Rückgängig";
+            options.onAction = function () { toggleTask(url, findCard(data.id), false); };
+        }
+        wochii.toast(data.message, options);
+    }
+
+    async function deleteTask(link) {
+        if (!window.confirm("„" + link.dataset.name + "“ wirklich löschen?")) return;
+        const card = link.closest("[data-task-id]");
+        setBusy(card, true);
+        let data;
+        try {
+            data = await wochii.post(link.href);
+        } catch (err) {
+            setBusy(card, false);
+            return;
+        }
+        if (card) card.remove();
+        await refreshList(null);
+        wochii.toast(data && data.message ? data.message : "Aufgabe gelöscht.");
+    }
+
+    document.addEventListener("submit", function (event) {
+        const form = event.target;
+        if (form.matches("[data-task-toggle]")) {
+            event.preventDefault();
+            toggleTask(form.action, form.closest("[data-task-id]"), true);
+            return;
+        }
+        if (form.dataset.confirm) {
+            if (!window.confirm(form.dataset.confirm)) {
+                event.preventDefault();
+                return;
+            }
+            const button = form.querySelector("button[type=submit]");
+            if (button) button.disabled = true;
+        }
     });
-    const empty = document.getElementById("empty-message");
-    if (empty) empty.style.display = visible === 0 ? "" : "none";
-}
 
-function ajaxPost(url) {
-    return fetch(url, {
-        method: "POST",
-        headers: {
-            "X-CSRFToken": csrfToken,
-            "X-Requested-With": "XMLHttpRequest",
-        },
+    document.addEventListener("click", function (event) {
+        const link = event.target.closest("a[data-task-delete]");
+        if (!link || link.classList.contains("disabled")) return;
+        event.preventDefault();
+        deleteTask(link);
     });
-}
 
-document.addEventListener("click", function (e) {
-    const toggleBtn = e.target.closest(".btn-toggle");
-    if (toggleBtn) {
-        e.preventDefault();
-        ajaxPost(toggleBtn.dataset.url)
-            .then(r => r.json())
-            .then(data => {
-                const card = toggleBtn.closest(".col-md-6");
-                const cardEl = card.querySelector(".card");
-                const title = card.querySelector(".card-title");
-                const statusLi = card.querySelector("ul li:last-child");
-
-                if (data.status === "done") {
-                    toggleBtn.textContent = "Wieder öffnen";
-                    toggleBtn.dataset.status = "done";
-                    cardEl.classList.add("border-success");
-                    title.classList.add("text-decoration-line-through", "text-muted");
-                    if (statusLi) statusLi.innerHTML = "<strong>Status:</strong> Erledigt";
-                } else {
-                    toggleBtn.textContent = "Erledigen";
-                    toggleBtn.dataset.status = "open";
-                    cardEl.classList.remove("border-success");
-                    title.classList.remove("text-decoration-line-through", "text-muted");
-                    if (statusLi) statusLi.innerHTML = "<strong>Status:</strong> Offen";
-                }
-                card.dataset.status = data.status;
-                applyFilter(currentFilter);
-            });
-    }
-
-    const filterBtn = e.target.closest("[data-filter]");
-    if (filterBtn) {
-        document.querySelectorAll("[data-filter]").forEach(b => b.classList.remove("active"));
-        filterBtn.classList.add("active");
-        currentFilter = filterBtn.dataset.filter;
-        applyFilter(currentFilter);
-    }
-
-    const deleteBtn = e.target.closest(".btn-delete");
-    if (deleteBtn) {
-        e.preventDefault();
-        if (!confirm(`"${deleteBtn.dataset.name}" wirklich löschen?`)) return;
-
-        ajaxPost(deleteBtn.dataset.url)
-            .then(r => r.json())
-            .then(data => {
-                if (data.deleted) {
-                    const card = deleteBtn.closest(".col-md-6");
-                    card.remove();
-
-                    const list = document.getElementById("task-list");
-                    if (list && list.children.length === 0) {
-                        list.insertAdjacentHTML("afterend",
-                            '<div class="card border-0 shadow-sm rounded-4"><div class="card-body p-5 text-center">' +
-                            '<p class="text-muted mb-3">Noch keine Aufgaben. Was steht an?</p>' +
-                            '<a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>' +
-                            '</div></div>');
-                        list.remove();
-                    }
-                }
-            });
-    }
-});
+    // Zurück-Taste (bfcache): gesperrte Knöpfe wieder freigeben.
+    window.addEventListener("pageshow", function (event) {
+        if (!event.persisted) return;
+        document.querySelectorAll("form[data-confirm] button[type=submit]").forEach(function (button) {
+            button.disabled = false;
+        });
+    });
+})();
 </script>
 {% endblock %}

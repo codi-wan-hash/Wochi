@@ -1,0 +1,70 @@
+/* ===== Aufgabenliste: Gruppen nach Fälligkeit ===== */
+
+/* Der Container bekommt nach dem Neuladen per Skript den Fokus – ohne
+   sichtbaren Rahmen, er ist nur Sprungziel für Tastatur und Screenreader. */
+.task-sections:focus {
+  outline: none;
+}
+
+.task-group + .task-group {
+  margin-top: 1.75rem;
+}
+
+.task-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.task-count {
+  background: var(--color-accent);
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+/* Überfällig: rot markiert, damit es beim Überfliegen auffällt */
+.task-group--overdue .task-group-title {
+  color: #b02a37;
+}
+.task-group--overdue .task-count {
+  background: #f8d7da;
+  color: #842029;
+}
+.task-card.is-overdue {
+  border-left: 4px solid #dc3545;
+}
+.task-due-overdue {
+  color: #b02a37;
+  font-weight: 600;
+}
+
+.task-recurrence {
+  background-color: #7c3aed;
+  color: #fff;
+}
+
+/* Während einer Anfrage */
+[data-task-id].is-busy {
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+/* ===== Erledigte Aufgaben (eingeklappt) ===== */
+.task-done {
+  margin-top: 2rem;
+}
+/* display bleibt list-item – mit flex verschwände das Aufklapp-Dreieck. */
+.task-done-summary {
+  min-height: 44px;
+  padding: 0.6rem 0;
+  margin-bottom: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.task-done-summary::marker {
+  color: var(--color-text-muted);
+}

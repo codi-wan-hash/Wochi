@@ -1,10 +1,17 @@
 from django import forms
+from django.contrib.auth import get_user_model
+
 from .models import Task
 
 
 class TaskForm(forms.ModelForm):
     due_date = forms.DateField(
-        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"})
+        # Deklarierte Felder bekommen das Label nicht aus Meta.labels – ohne
+        # eigenes Label stand hier „Due date“.
+        label="Fälligkeitsdatum",
+        # <input type="date"> versteht nur ISO-Werte. Ohne format schreibt
+        # Django „23.09.2026“ hinein und das Feld bleibt beim Bearbeiten leer.
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}, format="%Y-%m-%d"),
     )
 
     class Meta:
@@ -13,7 +20,6 @@ class TaskForm(forms.ModelForm):
         labels = {
             "title": "Titel",
             "description": "Beschreibung",
-            "due_date": "Fälligkeitsdatum",
             "priority": "Priorität",
             "recurrence": "Wiederholung",
             "assigned_to": "Zugewiesen an",
@@ -30,5 +36,9 @@ class TaskForm(forms.ModelForm):
         household = kwargs.pop("household", None)
         super().__init__(*args, **kwargs)
 
+        # Zur Auswahl stehen nur Mitglieder des eigenen Haushalts. Ohne
+        # Haushalt niemand – sonst stünden hier alle Benutzer der Seite.
         if household:
-            self.fields["assigned_to"].queryset = household.members.all()
+            self.fields["assigned_to"].queryset = household.members.order_by("username")
+        else:
+            self.fields["assigned_to"].queryset = get_user_model().objects.none()

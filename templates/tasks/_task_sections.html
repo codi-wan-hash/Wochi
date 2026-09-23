@@ -1,0 +1,53 @@
+{# Listenbereiche der Aufgabenseite. Wird auch einzeln ausgeliefert (?fragment=1), #}
+{# wenn das Seitenskript die Liste nach dem Abhaken neu lädt. #}
+{% for group in groups %}
+<section class="task-group task-group--{{ group.key }}" aria-labelledby="task-group-{{ group.key }}">
+    <h2 class="task-group-title" id="task-group-{{ group.key }}">
+        {{ group.label }}
+        <span class="badge rounded-pill task-count">{{ group.tasks|length }}</span>
+    </h2>
+    <div class="row g-3">
+        {% for task in group.tasks %}
+            {% include "tasks/_task_card.html" with group_key=group.key %}
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}
+
+{% if empty_message %}
+<div class="card border-0 shadow-sm rounded-4 mb-4" id="empty-message">
+    <div class="card-body p-5 text-center">
+        <p class="text-muted mb-3">{{ empty_message }}</p>
+        {% if status_filter != "done" %}
+        <a href="{% url 'task_create' %}" class="btn btn-dark">+ Neue Aufgabe</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if done_tasks %}
+<details class="task-done" data-done-tasks{% if status_filter == "done" %} open{% endif %}>
+    <summary class="task-done-summary">
+        Erledigt <span class="badge rounded-pill task-count">{{ done_total }}</span>
+    </summary>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <p class="small text-muted mb-0">
+            {% if done_total > done_tasks|length %}
+                Die letzten {{ done_tasks|length }} von {{ done_total }} erledigten Aufgaben.
+            {% else %}
+                Zuletzt fällige zuerst.
+            {% endif %}
+        </p>
+        <form method="post" action="{% url 'task_clear_done' %}"
+              data-confirm="Alle erledigten Aufgaben endgültig löschen? Das lässt sich nicht rückgängig machen.">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">Erledigte löschen</button>
+        </form>
+    </div>
+    <div class="row g-3">
+        {% for task in done_tasks %}
+            {% include "tasks/_task_card.html" with group_key="done" %}
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
