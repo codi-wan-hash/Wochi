@@ -20,7 +20,7 @@
                         {% if member.get_full_name %}<span class="text-muted small">({{ member.username }})</span>{% endif %}
                         {% if member == user %}<span class="badge text-bg-light">Du</span>{% endif %}
                     </div>
-                    {% if member != user %}
+                    {% if member.pk in removable_ids %}
                     <form method="post" action="{% url 'household_remove_member' household.pk member.pk %}"
                           data-confirm="{{ member.username }} aus „{{ household.name }}“ entfernen? {{ member.username }} sieht danach nichts mehr von diesem Haushalt.">
                         {% csrf_token %}

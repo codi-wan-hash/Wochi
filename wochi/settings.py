@@ -171,8 +171,25 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 LOGOUT_REDIRECT_URL = "login"
 
+# Login-Sperren, Drosselung und KI-Kontingente liegen im Cache. Der
+# Standard (300 Einträge) ließe sich mit ein paar hundert Fantasie-Logins
+# leerräumen. Pro gunicorn-Worker getrennt und nach einem Deploy leer – eine
+# Bremse, kein hartes Limit (dafür bräuchte es Redis).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "OPTIONS": {"MAX_ENTRIES": 20000},
+    }
+}
+
 # Anmeldung mit Benutzername oder E-Mail, unabhängig von Groß-/Kleinschreibung.
-AUTHENTICATION_BACKENDS = ["accounts.backends.UsernameOrEmailBackend"]
+# ModelBackend bleibt in der Liste: bestehende Sitzungen merken sich das
+# Backend, mit dem sie angemeldet wurden – ohne ihn wären beim Deploy alle
+# Nutzer abgemeldet.
+AUTHENTICATION_BACKENDS = [
+    "accounts.backends.UsernameOrEmailBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
 
 from django.contrib.messages import constants as message_constants
 
@@ -214,7 +231,7 @@ REST_FRAMEWORK = {
         "anon": "20/minute",
         "user": "300/minute",
         "auth": "5/minute",
-        "refresh": "30/minute",
+        "refresh": "120/minute",
         "password_reset": "5/hour",
         "ai": "20/hour",
     },
@@ -226,8 +243,10 @@ REST_FRAMEWORK = {
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    # Kurzlebige Access-Tokens; die App erneuert sie im Hintergrund.
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    # Kurzlebige Access-Tokens; die App erneuert sie im Hintergrund. Nicht
+    # kürzer, solange ältere App-Versionen im Umlauf sind: die melden sich
+    # bei einem Refresh im Funkloch ab.
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     # Gleitende Anmeldung: jeder Refresh liefert ein neues Refresh-Token.
     # Wer die App regelmäßig nutzt, bleibt angemeldet; nach 60 Tagen ohne
     # Nutzung ist eine neue Anmeldung nötig. Widerruf bei Passwortwechsel:

@@ -150,6 +150,10 @@ class ProfileForm(forms.ModelForm):
 
     def clean_username(self):
         username = self.cleaned_data["username"]
+        # Nur bei einer Änderung prüfen: ältere Konten wie „Anna“ neben „anna“
+        # sollen weiter Vor- und Nachnamen speichern können.
+        if "username" not in self.changed_data:
+            return username
         # Dieselbe Regel wie bei der Registrierung, sonst ließe sich „anna“ hier
         # in „Anna“ eines anderen Kontos umbenennen.
         taken = User.objects.filter(username__iexact=username).exclude(pk=self.instance.pk)

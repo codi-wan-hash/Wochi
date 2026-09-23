@@ -13,12 +13,19 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from accounts.services import delete_account
-from households.models import Household, HouseholdSelection
-from households.utils import get_current_household, leave_household, set_current_household
+from households.models import Household
+from households.utils import (
+    MemberRemovalError,
+    get_current_household,
+    leave_household,
+    remove_member,
+    set_current_household,
+)
 from meals.ai import QUOTA_MESSAGE, ai_quota_available, openai_client
 from meals.models import Ingredient, MealPlan, Recipe
 from shopping import services as shopping_services
@@ -104,6 +111,10 @@ class LoginView(TokenObtainPairView):
 
 class RefreshView(TokenRefreshView):
     serializer_class = WochiiTokenRefreshSerializer
+    # Nur das eigene Limit, nicht das allgemeine für anonyme Anfragen: mehrere
+    # Handys im selben WLAN erneuern ihre Tokens gleichzeitig, und ältere
+    # App-Versionen melden sich bei einem abgelehnten Refresh (429) ab.
+    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "refresh"
 
 
@@ -190,13 +201,15 @@ def _household_payload(request, households):
     current_id = current.pk if current else None
     # Aktiver Haushalt zuerst: ältere App-Versionen nehmen households[0].
     ordered = sorted(households, key=lambda h: (h.pk != current_id, h.name.lower(), h.pk))
-    return HouseholdSerializer(ordered, many=True, context={"current_id": current_id}).data
+    return HouseholdSerializer(
+        ordered, many=True, context={"current_id": current_id, "user": request.user}
+    ).data
 
 
 def _single_household_payload(request, household):
     current = get_current_household(request.user)
     return HouseholdSerializer(
-        household, context={"current_id": current.pk if current else None}
+        household, context={"current_id": current.pk if current else None, "user": request.user}
     ).data
 
 
@@ -272,14 +285,14 @@ def household_remove_member(request, pk, user_id):
     household = _member_household(request, pk)
     if household is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
-    if user_id == request.user.pk:
-        return Response({"detail": "Zum Verlassen bitte „Haushalt verlassen“ nutzen."},
-                        status=status.HTTP_400_BAD_REQUEST)
     member = household.members.filter(pk=user_id).first()
     if member is None:
         return Response(status=status.HTTP_404_NOT_FOUND)
-    household.members.remove(member)
-    HouseholdSelection.objects.filter(user=member, household=household).delete()
+    try:
+        remove_member(household, request.user, member)
+    except MemberRemovalError as exc:
+        code = status.HTTP_400_BAD_REQUEST if member.pk == request.user.pk else status.HTTP_403_FORBIDDEN
+        return Response({"detail": str(exc)}, status=code)
     return Response(_single_household_payload(request, household))
 
 
@@ -388,8 +401,9 @@ def tasks_clear_done(request):
     household = get_current_household(request.user)
     if not household:
         return Response({"deleted": 0})
-    deleted, _ = Task.objects.filter(household=household, status="done").delete()
-    return Response({"deleted": deleted})
+    _, per_model = Task.objects.filter(household=household, status="done").delete()
+    # delete() zählt die Zuweisungen mit; gemeint sind nur die Aufgaben.
+    return Response({"deleted": per_model.get(Task._meta.label, 0)})
 
 
 # ── Meals ─────────────────────────────────────────────────────────────────────
@@ -678,6 +692,9 @@ def meals_week_to_shopping(request):
 
     date_from = _parse_date(request.data.get("from"))
     date_to = _parse_date(request.data.get("to"))
+    # Ein kaputtes Datum darf nicht zu „alle Mahlzeiten aller Zeiten“ werden.
+    if (request.data.get("from") and not date_from) or (request.data.get("to") and not date_to):
+        return Response({"detail": "Ungültiges Datum."}, status=status.HTTP_400_BAD_REQUEST)
     meals = MealPlan.objects.filter(household=household)
     if date_from:
         meals = meals.filter(date__gte=date_from)

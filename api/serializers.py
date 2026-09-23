@@ -71,13 +71,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 class HouseholdSerializer(serializers.ModelSerializer):
     members = UserSerializer(many=True, read_only=True)
     is_current = serializers.SerializerMethodField()
+    removable_member_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Household
-        fields = ["id", "name", "members", "invite_token", "created_at", "is_current"]
+        fields = ["id", "name", "members", "invite_token", "created_at", "is_current", "removable_member_ids"]
 
     def get_is_current(self, household):
         return household.pk == self.context.get("current_id")
+
+    def get_removable_member_ids(self, household):
+        """Wen der anfragende Benutzer entfernen darf (nur später Beigetretene)."""
+        user = self.context.get("user")
+        if user is None:
+            return []
+        from households.utils import removable_member_ids
+        return sorted(removable_member_ids(household, user))
 
 
 class TaskSerializer(serializers.ModelSerializer):

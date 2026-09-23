@@ -137,3 +137,39 @@ def get_quantity_suggestions(household):
     shopping = ShoppingItem.objects.filter(household=household).values_list("quantity", flat=True)
     ingredients = Ingredient.objects.filter(recipe__household=household).values_list("quantity", flat=True)
     return sorted({q.strip() for q in list(shopping) + list(ingredients) if q.strip()}, key=str.lower)
+
+class MemberRemovalError(Exception):
+    """Mitglied darf (von diesem Benutzer) nicht entfernt werden."""
+
+
+def removable_member_ids(household, user):
+    """IDs der Mitglieder, die user entfernen darf: alle, die nach ihm beigetreten sind.
+
+    Einladungslinks dürfen weitergegeben werden und der Beitritt braucht keine
+    Freigabe. Ohne diese Regel könnte ein Fremder mit einem geleakten Link
+    beitreten und die Familie aus ihrem eigenen Haushalt werfen. So kann er
+    niemanden entfernen, der vor ihm da war – die Familie ihn aber schon.
+    Die Reihenfolge ergibt sich aus den Zeilen der Mitgliedschaftstabelle.
+    """
+    from .models import Household
+
+    through = Household.members.through
+    rows = dict(through.objects.filter(household=household).values_list("user_id", "pk"))
+    own = rows.get(user.pk)
+    if own is None:
+        return set()
+    return {member_id for member_id, row in rows.items() if row > own}
+
+
+def remove_member(household, acting_user, member):
+    """Mitglied aus dem Haushalt entfernen (siehe removable_member_ids)."""
+    from .models import HouseholdSelection
+
+    if member.pk == acting_user.pk:
+        raise MemberRemovalError("Um selbst zu gehen, nutze „Haushalt verlassen“.")
+    if member.pk not in removable_member_ids(household, acting_user):
+        raise MemberRemovalError(
+            "Entfernen kann nur, wer schon länger im Haushalt ist als die betreffende Person."
+        )
+    household.members.remove(member)
+    HouseholdSelection.objects.filter(user=member, household=household).delete()

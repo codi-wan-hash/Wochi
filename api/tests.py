@@ -284,7 +284,9 @@ class AuthTest(ApiTestCase):
         self.assertEqual(client.get("/api/auth/me/").status_code, 200)
         refreshed = APIClient().post("/api/auth/refresh/", {"refresh": str(legacy)}, format="json")
         self.assertEqual(refreshed.status_code, 200)
-        self.assertIn("pwh", RefreshToken(refreshed.data["refresh"]).payload)
+        # Nur ein neues Access-Token; das Alt-Token läuft zu seinem Datum ab.
+        self.assertIn("access", refreshed.data)
+        self.assertNotIn("refresh", refreshed.data)
 
     def test_me_contains_own_email_but_members_do_not(self):
         self.assertEqual(self.client.get("/api/auth/me/").data["email"], "anna@example.com")
@@ -462,10 +464,10 @@ class MealApiTest(ApiTestCase):
         response = self.client.post("/api/recipes/", {"title": "suppe"}, format="json")
         self.assertEqual(response.status_code, 400)
 
-    def test_invalid_date_filter_is_ignored_not_500(self):
+    def test_invalid_date_filter_is_not_500(self):
         self.assertEqual(self.client.get("/api/meals/?from=kaputt").status_code, 200)
         response = self.client.post("/api/meals/to-shopping/", {"from": "kaputt"}, format="json")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
 
     def test_week_to_shopping_merges_duplicates(self):
         recipe = Recipe.objects.create(household=self.household, title="Kuchen", created_by=self.user)
@@ -563,3 +565,51 @@ class AppSyncContractTest(ApiTestCase):
         self.assertEqual(response.data["results"][0]["status"], "ok")
         self.assertEqual(response.data["session"]["store"]["location"], "Rathausplatz")
         self.assertEqual(response.data["stores"][0]["item_order"], {})
+
+
+@override_settings(REST_FRAMEWORK=NO_THROTTLE)
+class ReviewFindingsTest(ApiTestCase):
+    def test_new_members_cannot_remove_earlier_members(self):
+        stranger = User.objects.create_user("fremd", "fremd@example.com", self.password)
+        self.household.members.add(stranger)
+        client = APIClient()
+        login(client, stranger, self.password)
+        response = client.post(f"/api/households/{self.household.pk}/members/{self.user.pk}/remove/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(self.household.members.filter(pk=self.user.pk).exists())
+        # Die Familie kann den Fremden aber entfernen.
+        payload = self.client.get("/api/households/").data[0]
+        self.assertIn(stranger.pk, payload["removable_member_ids"])
+        ok = self.client.post(f"/api/households/{self.household.pk}/members/{stranger.pk}/remove/")
+        self.assertEqual(ok.status_code, 200)
+
+    def test_api_login_uses_lockout(self):
+        # DRF liest throttle_classes beim Import; hier nur die Sperre prüfen,
+        # nicht die zusätzliche 5/min-Drosselung (die testet ThrottleTest).
+        from .views import LoginView
+        anon = APIClient()
+        with mock.patch.object(LoginView, "throttle_classes", []):
+            for _ in range(10):
+                anon.post("/api/auth/login/", {"username": "anna", "password": "falsch"}, format="json")
+            response = anon.post("/api/auth/login/", {"username": "anna", "password": self.password}, format="json")
+            self.assertEqual(response.status_code, 401)
+            self.assertIn("Fehlversuche", str(response.data))
+            # Ein anderes Konto von derselben Adresse ist nicht betroffen.
+            other = anon.post("/api/auth/login/", {"username": "ben", "password": self.password}, format="json")
+            self.assertEqual(other.status_code, 200)
+
+    def test_legacy_refresh_token_is_not_rotated(self):
+        legacy = RefreshToken.for_user(self.user)
+        response = APIClient().post("/api/auth/refresh/", {"refresh": str(legacy)}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("refresh", response.data)
+
+    def test_clear_done_counts_only_tasks(self):
+        task = Task.objects.create(household=self.household, title="Fertig", due_date=date.today(),
+                                   status="done", created_by=self.user)
+        task.assigned_to.add(self.user, self.other)
+        self.assertEqual(self.client.post("/api/tasks/clear-done/").data, {"deleted": 1})
+
+    def test_week_to_shopping_rejects_malformed_dates(self):
+        response = self.client.post("/api/meals/to-shopping/", {"from": "kaputt"}, format="json")
+        self.assertEqual(response.status_code, 400)

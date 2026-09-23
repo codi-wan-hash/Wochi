@@ -11,6 +11,7 @@ sie werden bis zu ihrem Ablauf akzeptiert und bekommen ihn beim nächsten
 Refresh, damit niemand beim Update abgemeldet wird.
 """
 from django.contrib.auth import get_user_model
+from rest_framework import exceptions as drf_exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
@@ -32,11 +33,30 @@ def tokens_for_user(user):
 
 
 class WochiiTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """App-Login mit derselben Sperre gegen Passwort-Raten wie im Web."""
+
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         token[PASSWORD_CLAIM] = password_fingerprint(user)
         return token
+
+    def validate(self, attrs):
+        from accounts.utils import login_blocked, record_failed_login
+
+        request = self.context.get("request")
+        username = attrs.get(self.username_field)
+        if request is not None and username and login_blocked(request, username):
+            raise AuthenticationFailed(
+                "Zu viele Fehlversuche. Bitte warte 15 Minuten.", "too_many_attempts"
+            )
+        try:
+            return super().validate(attrs)
+        except drf_exceptions.AuthenticationFailed:
+            # SimpleJWT wirft die DRF-Klasse, nicht seine eigene Unterklasse.
+            if request is not None and username:
+                record_failed_login(request, username)
+            raise
 
 
 class WochiiTokenRefreshSerializer(TokenRefreshSerializer):
@@ -50,9 +70,13 @@ class WochiiTokenRefreshSerializer(TokenRefreshSerializer):
         if claim is not None and claim != password_fingerprint(user):
             raise InvalidToken("Das Passwort wurde geändert. Bitte neu anmelden.")
 
-        if claim is None:
-            refresh[PASSWORD_CLAIM] = password_fingerprint(user)
         data = {"access": str(refresh.access_token)}
+        if claim is None:
+            # Token von vor der Umstellung: weiter gültig bis zu seinem
+            # Ablaufdatum, aber nicht rotieren – sonst würde ein gestohlenes
+            # Alt-Token nach einem Passwortwechsel zu einem neuen, gültigen
+            # Token „aufgewertet“.
+            return data
         if api_settings.ROTATE_REFRESH_TOKENS:
             refresh.set_jti()
             refresh.set_exp()

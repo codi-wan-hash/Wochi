@@ -112,7 +112,7 @@ def register_view(request):
             # soll nicht nach fünf Versuchen gesperrt sein.
             if allow(f"register:{client_ip(request)}", REGISTER_MAX_PER_IP, REGISTER_WINDOW_SECONDS):
                 user = form.save()
-                login(request, user)
+                login(request, user, backend="accounts.backends.UsernameOrEmailBackend")
                 return redirect(next_url or "choose_household")
             form.add_error(
                 None,

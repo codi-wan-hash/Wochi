@@ -11,7 +11,14 @@ from django.views.decorators.http import require_POST
 
 from .forms import HouseholdCreateForm, HouseholdJoinForm
 from .models import Household, HouseholdSelection
-from .utils import get_current_household, leave_household, set_current_household
+from .utils import (
+    MemberRemovalError,
+    get_current_household,
+    leave_household,
+    remove_member,
+    removable_member_ids,
+    set_current_household,
+)
 
 
 def _create_or_join(request):
@@ -146,6 +153,7 @@ def household_manage(request):
     return render(request, "households/manage.html", {
         "household": household,
         "members": members,
+        "removable_ids": removable_member_ids(household, request.user),
         "is_last_member": is_last_member,
         "leave_confirm": leave_confirm,
         "invite_url": request.build_absolute_uri(
@@ -203,13 +211,12 @@ def household_regenerate_invite(request, pk):
 @require_POST
 def household_remove_member(request, pk, user_id):
     household = _member_household(request, pk)
-    if user_id == request.user.pk:
-        messages.error(request, "Um selbst zu gehen, nutze „Haushalt verlassen“.")
-        return redirect("household_manage")
     member = get_object_or_404(household.members, pk=user_id)
-    with transaction.atomic():
-        household.members.remove(member)
-        # Die Auswahl „aktiver Haushalt“ der Person gleich mit aufräumen.
-        HouseholdSelection.objects.filter(user=member, household=household).delete()
+    try:
+        with transaction.atomic():
+            remove_member(household, request.user, member)
+    except MemberRemovalError as exc:
+        messages.error(request, str(exc))
+        return redirect("household_manage")
     messages.success(request, f"{member.username} wurde aus „{household.name}“ entfernt.")
     return redirect("household_manage")
