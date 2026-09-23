@@ -5,7 +5,7 @@ certifi==2026.2.25
 colorama==0.4.6
 distro==1.9.0
 dj-database-url==3.1.2
-Django==6.0.3
+Django==6.0.8
 gunicorn==25.3.0
 h11==0.16.0
 httpcore==1.0.9
@@ -25,9 +25,9 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2025.3
 whitenoise==6.12.0
-djangorestframework==3.16.0
-djangorestframework-simplejwt==5.5.0
+djangorestframework==3.17.2
+djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.7.0
 cloudinary==1.41.0
-holidays
-weasyprint
+holidays==0.96
+weasyprint==68.1
