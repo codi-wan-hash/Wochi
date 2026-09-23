@@ -3,6 +3,8 @@
 Gemeinsam genutzt von den Web-Views, der REST-API und der Offline-Synchronisation
 der App, damit sich z. B. das Abhaken überall gleich verhält.
 """
+from datetime import timedelta
+
 from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
@@ -20,12 +22,22 @@ def item_key(name):
     return (name or "").strip().lower()
 
 
+# Ein vergessener Einkauf würde sonst tagelang weiterlaufen und beim
+# späteren Abhaken eine falsche Laden-Reihenfolge lernen.
+SESSION_MAX_AGE = timedelta(hours=8)
+
+
 def active_session(household):
-    return (
+    """Laufender Einkauf des Haushalts; ältere als SESSION_MAX_AGE werden beendet."""
+    session = (
         ShoppingSession.objects.filter(household=household, ended_at__isnull=True)
         .select_related("store")
         .first()
     )
+    if session and session.started_at < timezone.now() - SESSION_MAX_AGE:
+        session.end()
+        return None
+    return session
 
 
 def set_bought(household, item, is_bought):

@@ -203,3 +203,18 @@ class ShoppingServicesTest(TestCase):
         self.assertEqual((added, merged), (1, 2))
         self.assertEqual(ShoppingItem.objects.get(name="Mehl").quantity, "500 g")
         self.assertEqual(ShoppingItem.objects.get(name="Eier").quantity, "5")
+
+    def test_forgotten_session_ends_automatically(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from . import services
+        user = User.objects.create_user(username="vergesslich", password="pw123456")
+        household = Household.objects.create(name="Vergesslich")
+        household.members.add(user)
+        store = Store.objects.create(household=household, name="Rewe")
+        session = ShoppingSession.objects.create(household=household, store=store, started_by=user)
+        ShoppingSession.objects.filter(pk=session.pk).update(started_at=timezone.now() - timedelta(hours=9))
+        self.assertIsNone(services.active_session(household))
+        session.refresh_from_db()
+        self.assertIsNotNone(session.ended_at)
+
