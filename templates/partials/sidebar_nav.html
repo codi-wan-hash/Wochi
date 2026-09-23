@@ -1,0 +1,22 @@
+<nav class="sidebar-nav" aria-label="Bereiche">
+    <a href="{% url 'home' %}" class="{% if request.path == '/' %}active{% endif %}">Übersicht</a>
+    <a href="{% url 'task_list' %}" class="{% if '/tasks/' in request.path %}active{% endif %}">Aufgaben</a>
+    <a href="{% url 'shopping_list' %}" class="{% if '/shopping/' in request.path %}active{% endif %}">Einkaufsliste</a>
+    <a href="{% url 'meal_list' %}" class="{% if '/meals/' in request.path and not '/meals/recipes/' in request.path and not '/meals/ai-generator/' in request.path %}active{% endif %}">Essensplan</a>
+    <a href="{% url 'recipe_list' %}" class="{% if '/meals/recipes/' in request.path %}active{% endif %}">Gerichte</a>
+    <a href="{% url 'ai_generator_form' %}" class="{% if '/meals/ai-generator/' in request.path %}active{% endif %}">Rezept-KI</a>
+    {% if user.userprofile.timetracking_enabled %}
+    <a href="{% url 'timetracking:dashboard' %}" class="{% if '/timetracking/' in request.path %}active{% endif %}">Arbeitszeit</a>
+    {% endif %}
+    <a href="{% url 'household_manage' %}" class="{% if request.path == '/households/' %}active{% endif %}">Haushalt</a>
+</nav>
+<div class="sidebar-footer">
+    <a href="{% url 'profile' %}" class="sidebar-user" title="Profil &amp; Einstellungen" data-initial="{{ user.username|first|upper }}">
+        <span class="sidebar-user-name">{{ user.username }}</span>
+        <span class="sidebar-user-gear" aria-hidden="true">⚙︎</span>
+    </a>
+    <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit" class="sidebar-logout-btn">Abmelden</button>
+    </form>
+</div>

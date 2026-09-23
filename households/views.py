@@ -54,3 +54,16 @@ def join_via_link(request, token):
         return redirect("task_list")
 
     return render(request, "households/join_via_link.html", {"household": household})
+
+@login_required
+def household_manage(request):
+    """Haushalt verwalten: Mitglieder, Einladung, wechseln, verlassen."""
+    from .utils import get_current_household
+
+    household = get_current_household(request.user)
+    if not household:
+        return redirect("choose_household")
+    return render(request, "households/manage.html", {
+        "household": household,
+        "households": request.user.households.order_by("name"),
+    })

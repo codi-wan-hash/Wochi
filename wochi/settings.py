@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -157,9 +158,14 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
-# Fehlt ein Eintrag im Manifest (Tests, vergessenes collectstatic), wird der
+# Fehlt ein Eintrag im Manifest (vergessenes collectstatic), wird der
 # ungehashte Pfad ausgeliefert statt die ganze Seite mit 500 abzubrechen.
 WHITENOISE_MANIFEST_STRICT = False
+
+# Tests laufen ohne collectstatic; der Manifest-Storage bräuchte die
+# gesammelten Dateien.
+if len(sys.argv) > 1 and sys.argv[1] == "test":
+    STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
 LOGIN_REDIRECT_URL = "home"
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")

@@ -719,3 +719,118 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 767.98px) {
   body { overflow-x: clip; }
 }
+
+/* ===== Barrierefreiheit: Sprung zum Inhalt ===== */
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 1100;
+  background: var(--color-card);
+  color: var(--color-text);
+  padding: 0.75rem 1rem;
+  border-radius: 0 0 8px 0;
+}
+.skip-link:focus { left: 0; }
+
+/* ===== Mobile Tab-Leiste ===== */
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1030;
+  display: flex;
+  background: var(--color-card);
+  border-top: 1px solid var(--color-border);
+  /* Home-Indikator (iOS) bzw. Gestenleiste (Android) frei lassen */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -2px 12px rgba(45, 27, 14, 0.06);
+}
+.bottom-nav a,
+.bottom-nav button {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 6px 2px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: none;
+  border: 0;
+}
+.bottom-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bottom-nav a.active {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+@media (max-width: 767.98px) {
+  /* Inhalt endet über der Tab-Leiste */
+  body.has-bottom-nav .app-content {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ===== Kurzmeldungen (wochii.toast) ===== */
+.wochii-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 1090;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(92vw, 420px);
+  pointer-events: none;
+}
+@media (max-width: 767.98px) {
+  body.has-bottom-nav .wochii-toasts {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+.wochii-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #2d1b0e;
+  color: #fff;
+  font-size: 0.92rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.wochii-toast.is-danger { background: #9b2226; }
+.wochii-toast-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffe8c7;
+  font-weight: 700;
+}
+
+/* Aktiver Filter-Knopf war nicht von den anderen zu unterscheiden */
+.btn-outline-secondary.active,
+.btn-outline-secondary[aria-pressed="true"] {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  color: #fff !important;
+}
