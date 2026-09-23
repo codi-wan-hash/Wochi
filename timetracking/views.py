@@ -23,6 +23,11 @@ from .periods import (
     week_bounds,
 )
 from .utils import calculate_total_saldo, get_or_create_profile, get_week_start
+from wochi.ratelimit import allow
+
+# Jeder Versand erzeugt ein PDF und eine Mail. Begrenzt, damit niemand über
+# ein fremdes Konto Postfächer flutet und den Ruf der Absenderdomain ruiniert.
+REPORT_MAILS_PER_HOUR = 5
 
 logger = logging.getLogger(__name__)
 
@@ -456,6 +461,10 @@ def report_email(request):
 
     if not request.user.email:
         messages.error(request, "Keine E-Mail-Adresse im Profil hinterlegt.")
+        return redirect(resolve_url("timetracking:report_view") + range_query)
+
+    if not allow(f"report-mail:{request.user.pk}", REPORT_MAILS_PER_HOUR, 60 * 60):
+        messages.error(request, "Du hast gerade schon mehrere Berichte verschickt. Bitte versuche es in einer Stunde erneut.")
         return redirect(resolve_url("timetracking:report_view") + range_query)
 
     context = _report_context(profile, start, end, today)

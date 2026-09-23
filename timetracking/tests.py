@@ -1229,3 +1229,82 @@ class EntryNextRedirectTest(TestCase):
         self.assertRedirects(
             response, "/timetracking/monat/2026/3/", fetch_redirect_response=False
         )
+
+
+class JobStartDateValidationTest(TestCase):
+    """Das Startdatum begrenzt, wie viele Tageszeilen Dashboard und Bericht erzeugen."""
+
+    def _form(self, start, instance=None):
+        from timetracking.forms import JobForm
+        data = {
+            "name": "Hauptjob",
+            "work_start_date": start,
+            "monday_hours": "8", "tuesday_hours": "8", "wednesday_hours": "8",
+            "thursday_hours": "8", "friday_hours": "8",
+            "saturday_hours": "0", "sunday_hours": "0",
+            "holiday_credit_basis": "per_day",
+        }
+        return JobForm(data=data, instance=instance)
+
+    def _today(self):
+        from timetracking.periods import today_local
+        return today_local()
+
+    def test_regular_start_date_is_accepted(self):
+        self.assertTrue(self._form("2026-03-01").is_valid())
+
+    def test_boundaries_are_accepted(self):
+        from timetracking.forms import _one_year_after
+        for start in (date(2000, 1, 1), _one_year_after(self._today())):
+            with self.subTest(start=start):
+                self.assertTrue(self._form(start.isoformat()).is_valid())
+
+    def test_year_one_is_rejected(self):
+        form = self._form("0001-01-01")
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors["work_start_date"], ["Das Startdatum darf nicht vor dem 01.01.2000 liegen."])
+
+    def test_date_before_2000_is_rejected(self):
+        self.assertFalse(self._form("1999-12-31").is_valid())
+
+    def test_more_than_a_year_ahead_is_rejected(self):
+        from datetime import timedelta
+        from timetracking.forms import _one_year_after
+        too_late = _one_year_after(self._today()) + timedelta(days=1)
+        form = self._form(too_late.isoformat())
+        self.assertFalse(form.is_valid())
+        self.assertEqual(
+            form.errors["work_start_date"],
+            ["Das Startdatum darf höchstens ein Jahr in der Zukunft liegen."],
+        )
+
+    def test_one_year_after_handles_leap_day(self):
+        from timetracking.forms import _one_year_after
+        self.assertEqual(_one_year_after(date(2028, 2, 29)), date(2029, 2, 28))
+        self.assertEqual(_one_year_after(date(2026, 9, 23)), date(2027, 9, 23))
+
+    def test_date_input_offers_the_allowed_range(self):
+        from timetracking.forms import _one_year_after
+        widget = self._form("2026-03-01").fields["work_start_date"].widget
+        self.assertEqual(widget.attrs["min"], "2000-01-01")
+        self.assertEqual(widget.attrs["max"], _one_year_after(self._today()).isoformat())
+
+    def test_views_reject_year_one_for_new_and_existing_jobs(self):
+        from timetracking.models import Job
+        user = User.objects.create_user(username="startdatum", password="pw123456")
+        profile = user.userprofile
+        profile.timetracking_enabled = True
+        profile.bundesland = "BY"
+        profile.save()
+        job = make_job(user)
+        self.client.force_login(user)
+        data = dict(self._form("0001-01-01").data, name="Nebenjob")
+
+        create = self.client.post("/timetracking/jobs/neu/", data)
+        edit = self.client.post(f"/timetracking/jobs/{job.pk}/bearbeiten/", dict(data, name="Hauptjob"))
+
+        self.assertEqual(create.status_code, 200)
+        self.assertEqual(edit.status_code, 200)
+        self.assertFalse(Job.objects.filter(name="Nebenjob").exists())
+        job.refresh_from_db()
+        self.assertEqual(job.work_start_date, date(2026, 1, 1))

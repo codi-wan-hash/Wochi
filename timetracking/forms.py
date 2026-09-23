@@ -1,7 +1,16 @@
+from datetime import date
+
 from django import forms
 from .models import Job, UserProfile, WorkEntry
-from .periods import MAX_RANGE_DAYS
+from .periods import MAX_RANGE_DAYS, MIN_YEAR, today_local
 from .utils import is_soll_day
+
+
+def _one_year_after(day):
+    try:
+        return day.replace(year=day.year + 1)
+    except ValueError:  # 29. Februar
+        return day.replace(year=day.year + 1, day=28)
 
 
 class ReportRangeForm(forms.Form):
@@ -64,6 +73,31 @@ class JobForm(forms.ModelForm):
             "sunday_hours": "Sonntag",
             "holiday_credit_basis": "Feiertagsentlastung berechnen nach",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        earliest, latest = self._start_date_bounds()
+        self.fields["work_start_date"].widget.attrs.update({
+            "min": earliest.isoformat(),
+            "max": latest.isoformat(),
+        })
+
+    @staticmethod
+    def _start_date_bounds():
+        return date(MIN_YEAR, 1, 1), _one_year_after(today_local())
+
+    def clean_work_start_date(self):
+        # Dashboard und Bericht erzeugen eine Zeile pro Tag ab dem Startdatum;
+        # mit dem Jahr 0001 wären das rund 740.000 Zeilen pro Seitenaufruf.
+        start = self.cleaned_data["work_start_date"]
+        earliest, latest = self._start_date_bounds()
+        if start < earliest:
+            raise forms.ValidationError(
+                f"Das Startdatum darf nicht vor dem {earliest:%d.%m.%Y} liegen."
+            )
+        if start > latest:
+            raise forms.ValidationError("Das Startdatum darf höchstens ein Jahr in der Zukunft liegen.")
+        return start
 
 
 class UserProfileForm(forms.ModelForm):
