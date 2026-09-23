@@ -17,6 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+from accounts.forms import AdminLoginForm
+
+# Auch /admin/ bekommt die Bremse gegen Passwort-Raten.
+admin.site.login_form = AdminLoginForm
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     # Die Auth-Views sind bewusst in accounts/urls.py ausgeschrieben statt über

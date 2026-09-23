@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.checks import Warning, register
+from django.core.checks import Tags, Warning, register
 
 CONSOLE_BACKEND = "django.core.mail.backends.console.EmailBackend"
 SMTP_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -36,3 +36,32 @@ def email_backend_configured(app_configs, **kwargs):
             id="accounts.W002",
         ))
     return problems
+
+
+@register(Tags.security)
+def secret_key_not_public(app_configs, **kwargs):
+    """Warnen, wenn SECRET_KEY ein öffentlich bekannter Wert ist.
+
+    Die Werte aus KNOWN_INSECURE_SECRET_KEYS stehen im Repository, und
+    „django-insecure-…“ ist der Platzhalter aus startproject. Mit einem davon
+    kann jeder Sitzungs-Cookies und – solange JWT_SIGNING_KEY fehlt – auch
+    App-Tokens fälschen und sich damit als beliebiger Benutzer ausgeben.
+
+    Wie die Mail-Prüfung nur eine Warnung: ein Error würde `migrate` und damit
+    das Deployment abbrechen.
+    """
+    if settings.DEBUG:
+        return []
+
+    secret_key = settings.SECRET_KEY or ""
+    known = getattr(settings, "KNOWN_INSECURE_SECRET_KEYS", ())
+    if secret_key in known or secret_key.startswith("django-insecure-"):
+        return [Warning(
+            "SECRET_KEY ist ein öffentlich bekannter Wert. Damit lassen sich "
+            "Sitzungen und App-Tokens fälschen.",
+            hint="Einen langen Zufallswert als SECRET_KEY in der Server-Umgebung "
+                 "setzen, z. B. aus: python -c \"import secrets; "
+                 "print(secrets.token_urlsafe(50))\". Danach müssen sich alle neu anmelden.",
+            id="accounts.W003",
+        )]
+    return []

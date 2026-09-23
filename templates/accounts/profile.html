@@ -1,45 +1,39 @@
 {% extends "base.html" %}
+
+{% block title %}Profil · Wochii{% endblock %}
+
 {% block content %}
 <div class="container py-4" style="max-width:600px">
     <h1 class="h3 mb-4">Profil</h1>
 
-    {% if messages %}
-    <div class="mb-3">
-        {% for m in messages %}
-        <div class="alert alert-{{ m.tags|default:'info' }} alert-dismissible fade show" role="alert">
-            {{ m }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
-    <div class="card mb-4">
+    <section class="card mb-4" aria-labelledby="personal-heading">
         <div class="card-body">
-            <h5 class="card-title">Persönliche Daten</h5>
+            <h2 class="h5 card-title" id="personal-heading">Persönliche Daten</h2>
             <form method="post">
                 {% csrf_token %}
                 <div class="mb-3">
                     <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }}</label>
                     {{ form.username }}
-                    {% if form.username.errors %}<div class="invalid-feedback d-block">{{ form.username.errors }}</div>{% endif %}
+                    {% if form.username.errors %}<div class="invalid-feedback d-block" id="{{ form.username.auto_id }}_error">{{ form.username.errors|join:" " }}</div>{% endif %}
                 </div>
                 <div class="mb-3">
                     <label for="{{ form.first_name.id_for_label }}" class="form-label">{{ form.first_name.label }}</label>
                     {{ form.first_name }}
+                    {% if form.first_name.errors %}<div class="invalid-feedback d-block" id="{{ form.first_name.auto_id }}_error">{{ form.first_name.errors|join:" " }}</div>{% endif %}
                 </div>
                 <div class="mb-3">
                     <label for="{{ form.last_name.id_for_label }}" class="form-label">{{ form.last_name.label }}</label>
                     {{ form.last_name }}
+                    {% if form.last_name.errors %}<div class="invalid-feedback d-block" id="{{ form.last_name.auto_id }}_error">{{ form.last_name.errors|join:" " }}</div>{% endif %}
                 </div>
                 <button type="submit" class="btn btn-primary">Speichern</button>
             </form>
         </div>
-    </div>
+    </section>
 
-    <div class="card mb-4">
+    <section class="card mb-4" aria-labelledby="email-heading">
         <div class="card-body">
-            <h5 class="card-title">E-Mail</h5>
+            <h2 class="h5 card-title" id="email-heading">E-Mail</h2>
             <p class="mb-2">Aktuell: <strong>{{ user.email|default:"– keine –" }}</strong></p>
             {% if profile.pending_email %}
             <div class="alert alert-info py-2">
@@ -47,19 +41,30 @@
                 Link gültig bis {{ profile.email_token_expires_at|date:"d.m.Y H:i" }}.
                 <form method="post" action="{% url 'email_cancel' %}" class="d-inline">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-secondary ms-2">Abbrechen</button>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary ms-2">Abbrechen<span class="visually-hidden">: E-Mail-Änderung</span></button>
                 </form>
             </div>
             {% endif %}
             <a href="{% url 'email_change' %}" class="btn btn-outline-primary btn-sm">E-Mail ändern</a>
         </div>
-    </div>
+    </section>
 
-    <div class="card">
+    <section class="card mb-4" aria-labelledby="password-heading">
         <div class="card-body">
-            <h5 class="card-title">Passwort</h5>
+            <h2 class="h5 card-title" id="password-heading">Passwort</h2>
             <a href="{% url 'password_change' %}" class="btn btn-outline-primary btn-sm">Passwort ändern</a>
         </div>
-    </div>
+    </section>
+
+    <section class="card border-danger-subtle" aria-labelledby="delete-heading">
+        <div class="card-body">
+            <h2 class="h5 card-title" id="delete-heading">Konto löschen</h2>
+            <p class="text-muted small">
+                Löscht dein Konto und deine persönlichen Daten endgültig. Auf der nächsten
+                Seite siehst du genau, was mit deinen Haushalten passiert.
+            </p>
+            <a href="{% url 'account_delete' %}" class="btn btn-outline-danger btn-sm">Konto löschen …</a>
+        </div>
+    </section>
 </div>
 {% endblock %}

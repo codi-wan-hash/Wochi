@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+
+{% block title %}E-Mail ändern · Wochii{% endblock %}
+
 {% block content %}
 <div class="container py-4" style="max-width:500px">
     <h1 class="h3 mb-4">E-Mail ändern</h1>
@@ -10,7 +13,12 @@
                 <div class="mb-3">
                     <label for="{{ form.new_email.id_for_label }}" class="form-label">{{ form.new_email.label }}</label>
                     {{ form.new_email }}
-                    {% if form.new_email.errors %}<div class="invalid-feedback d-block">{{ form.new_email.errors }}</div>{% endif %}
+                    {% if form.new_email.errors %}<div class="invalid-feedback d-block" id="{{ form.new_email.auto_id }}_error">{{ form.new_email.errors|join:" " }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
+                    {{ form.password }}
+                    {% if form.password.errors %}<div class="invalid-feedback d-block" id="{{ form.password.auto_id }}_error">{{ form.password.errors|join:" " }}</div>{% endif %}
                 </div>
                 <p class="form-text">Wir senden einen Bestätigungs-Link an die neue Adresse.</p>
                 <div class="d-flex gap-2">

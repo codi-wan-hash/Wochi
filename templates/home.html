@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}Übersicht · Wochii{% endblock %}
+
 {% block content %}
 <div class="mb-4">
     <h1 class="display-6 fw-bold">Willkommen bei Wochii</h1>
@@ -8,24 +10,18 @@
     </p>
 
     {% if household %}
-        <p class="text-muted mb-1">
-            Aktiver Haushalt: <strong>{{ household.name }}</strong>
-        </p>
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <span class="text-muted small">Einladungslink:</span>
-            <code class="small text-muted" id="invite-link">{{ request.scheme }}://{{ request.get_host }}{% url 'join_via_link' household.invite_token %}</code>
-            <button class="btn btn-outline-secondary btn-sm" onclick="copyInviteLink()">Kopieren</button>
-            <span id="copy-confirm" class="text-success small" style="display:none;">✓ Kopiert!</span>
-        </div>
-        <script>
-        function copyInviteLink() {
-            navigator.clipboard.writeText(document.getElementById('invite-link').textContent).then(() => {
-                const c = document.getElementById('copy-confirm');
-                c.style.display = 'inline';
-                setTimeout(() => c.style.display = 'none', 2000);
-            });
-        }
-        </script>
+        <section class="card border-0 shadow-sm rounded-4" aria-labelledby="household-heading">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                    <div>
+                        <p class="text-muted small mb-1">Aktiver Haushalt</p>
+                        <h2 class="h5 mb-0" id="household-heading">{{ household.name }}</h2>
+                    </div>
+                    <a href="{% url 'household_manage' %}" class="btn btn-outline-secondary btn-sm">Haushalt verwalten</a>
+                </div>
+                {% include "households/_invite_link.html" %}
+            </div>
+        </section>
     {% else %}
         <div class="alert alert-warning">
             Du bist aktuell noch keinem Haushalt zugeordnet.
@@ -127,7 +123,9 @@
                                 <div class="d-flex justify-content-between">
                                     <div>
                                         <strong>{{ task.title }}</strong><br>
-                                        <small class="text-muted">Fällig: {{ task.due_date }}</small>
+                                        <small class="{% if task.due_date < today %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+                                            Fällig: {{ task.due_date|date:"D, d.m.Y" }}{% if task.due_date < today %} (überfällig){% endif %}
+                                        </small>
                                     </div>
                                     <span class="badge 
                                         {% if task.priority == 'high' %}bg-danger
@@ -172,4 +170,8 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if household %}{% include "households/_invite_script.html" %}{% endif %}
 {% endblock %}

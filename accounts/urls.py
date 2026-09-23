@@ -7,7 +7,9 @@ from .views import (
     email_change_view,
     email_verify_view,
     email_cancel_view,
+    account_delete_view,
     PasswordResetThrottledView,
+    ThrottledLoginView,
 )
 
 urlpatterns = [
@@ -16,9 +18,7 @@ urlpatterns = [
 
     # Anmeldung. Der Pfad bleibt /accounts/login/, weil Djangos LOGIN_URL-Default
     # und @login_required darauf zeigen.
-    path("accounts/login/",
-         auth_views.LoginView.as_view(template_name="registration/login.html"),
-         name="login"),
+    path("accounts/login/", ThrottledLoginView.as_view(), name="login"),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
 
     # Passwort vergessen
@@ -63,4 +63,6 @@ urlpatterns = [
              template_name="accounts/password_change_done.html",
          ),
          name="password_change_done"),
+    # Konto löschen – muss laut Google Play auch ohne App im Web erreichbar sein.
+    path("accounts/profil/konto-loeschen/", account_delete_view, name="account_delete"),
 ]

@@ -1,36 +1,47 @@
 {% extends "base.html" %}
 
+{% block title %}Anmelden · Wochii{% endblock %}
+
 {% block content %}
 <div class="col-md-5">
     <div class="card shadow-sm border-0 rounded-4">
         <div class="card-body p-4">
-            <h2 class="mb-4">Anmelden</h2>
+            <h1 class="h2 mb-4">Anmelden</h1>
+
+            {% if is_invite %}
+            <div class="alert alert-info py-2">
+                Du wurdest zu einem Haushalt eingeladen. Melde dich an – oder
+                registriere dich, falls du noch kein Konto hast. Danach geht es direkt
+                zur Einladung.
+            </div>
+            {% endif %}
 
             <form method="post">
                 {% csrf_token %}
-
-                {% for field in form %}
-                <div class="mb-3">
-                    <label for="{{ field.id_for_label }}" class="form-label fw-semibold">
-                        {{ field.label }}
-                    </label>
-                    <input
-                        type="{{ field.field.widget.input_type }}"
-                        name="{{ field.html_name }}"
-                        id="{{ field.id_for_label }}"
-                        class="form-control{% if field.errors %} is-invalid{% endif %}"
-                        {% if field.value %}value="{{ field.value }}"{% endif %}
-                        autocomplete="{% if field.html_name == 'password' %}current-password{% else %}username{% endif %}"
-                    >
-                    {% for error in field.errors %}
-                        <div class="invalid-feedback">{{ error }}</div>
-                    {% endfor %}
-                </div>
-                {% endfor %}
+                {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
 
                 {% if form.non_field_errors %}
-                <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+                <div class="alert alert-danger py-2" role="alert">
+                    {% for error in form.non_field_errors %}{{ error }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+                </div>
                 {% endif %}
+
+                <div class="mb-3">
+                    <label for="{{ form.username.id_for_label }}" class="form-label fw-semibold">{{ form.username.label }}</label>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                    <div class="invalid-feedback d-block" id="{{ form.username.auto_id }}_error">{{ form.username.errors|join:" " }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.password.id_for_label }}" class="form-label fw-semibold">{{ form.password.label }}</label>
+                    {# Das Passwort wird nach einem Fehlversuch bewusst nicht wieder eingesetzt. #}
+                    {{ form.password }}
+                    {% if form.password.errors %}
+                    <div class="invalid-feedback d-block" id="{{ form.password.auto_id }}_error">{{ form.password.errors|join:" " }}</div>
+                    {% endif %}
+                </div>
 
                 <button type="submit" class="btn btn-dark w-100 mt-2">Anmelden</button>
             </form>
@@ -40,7 +51,7 @@
             </p>
             <p class="text-center mb-0">
                 Noch kein Konto?
-                <a href="{% url 'register' %}">Jetzt registrieren</a>
+                <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Jetzt registrieren</a>
             </p>
         </div>
     </div>

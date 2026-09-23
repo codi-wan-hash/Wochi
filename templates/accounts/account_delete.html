@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Konto löschen · Wochii{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:600px">
+    <h1 class="h3 mb-4">Konto löschen</h1>
+
+    <section class="card mb-4" aria-labelledby="consequences-heading">
+        <div class="card-body">
+            <h2 class="h5 card-title" id="consequences-heading">Was beim Löschen passiert</h2>
+            <ul class="mb-0">
+                <li class="mb-2">
+                    Dein Konto <strong>{{ user.username }}</strong> und deine persönlichen Daten
+                    werden gelöscht – dazu gehört auch deine Arbeitszeiterfassung.
+                </li>
+                <li class="mb-2">
+                    Haushalte, in denen du das <strong>einzige Mitglied</strong> bist, werden mit
+                    allen Daten gelöscht: Aufgaben, Essensplan, Rezepte und Einkaufsliste.
+                </li>
+                <li class="mb-2">
+                    In Haushalten mit anderen Mitgliedern bleiben Aufgaben, Essensplan, Rezepte
+                    und Einkaufsliste für die anderen erhalten. Wo du als Ersteller eingetragen
+                    warst, steht dann kein Name mehr.
+                </li>
+                <li><strong>Das Löschen lässt sich nicht rückgängig machen.</strong></li>
+            </ul>
+        </div>
+    </section>
+
+    {% if households_deleted or households_kept %}
+    <section class="card mb-4" aria-labelledby="households-heading">
+        <div class="card-body">
+            <h2 class="h5 card-title" id="households-heading">Deine Haushalte</h2>
+            {% if households_deleted %}
+            <p class="mb-1 text-danger fw-semibold">Werden mit allen Daten gelöscht:</p>
+            <ul>
+                {% for household in households_deleted %}
+                <li>„{{ household.name }}“ <span class="text-muted small">(nur du)</span></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if households_kept %}
+            <p class="mb-1 fw-semibold">Bleiben für die anderen erhalten:</p>
+            <ul class="mb-0">
+                {% for household in households_kept %}
+                <li>„{{ household.name }}“ <span class="text-muted small">({{ household.member_count }} Mitglieder)</span></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="card border-danger" aria-labelledby="confirm-heading">
+        <div class="card-body">
+            <h2 class="h5 card-title" id="confirm-heading">Löschen bestätigen</h2>
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
+                    {{ form.password }}
+                    {% if form.password.errors %}<div class="invalid-feedback d-block" id="{{ form.password.auto_id }}_error">{{ form.password.errors|join:" " }}</div>{% endif %}
+                    <div class="form-text">Zur Sicherheit: Nur wer dein Passwort kennt, kann das Konto löschen.</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-danger">Konto endgültig löschen</button>
+                    <a href="{% url 'profile' %}" class="btn btn-outline-secondary">Abbrechen</a>
+                </div>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}
