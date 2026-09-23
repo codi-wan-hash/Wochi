@@ -506,3 +506,49 @@ class ThrottleTest(TestCase):
             for _ in range(7)
         ]
         self.assertIn(429, codes)
+
+
+@override_settings(REST_FRAMEWORK=NO_THROTTLE)
+class AppSyncContractTest(ApiTestCase):
+    """Operationen genau so, wie wochi-app/src/offline/ShoppingStore.js sie baut."""
+
+    def test_full_offline_trip_as_the_app_sends_it(self):
+        now = "2026-09-23T10:00:00.000Z"
+        store = Store.objects.create(household=self.household, name="Rewe", location="")
+        existing = ShoppingItem.objects.create(household=self.household, name="Brot", added_by=self.other)
+        milk, session = str(uuid.uuid4()), str(uuid.uuid4())
+        batch = [
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "start_session", "client_id": session,
+             "store_id": store.pk, "store_name": "Rewe", "store_location": ""},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "add", "client_id": milk, "name": "Milch", "quantity": ""},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "update", "item": {"client_id": milk}, "quantity": "2 l"},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "set_bought", "item": {"id": existing.pk}, "is_bought": True},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "set_bought", "item": {"client_id": milk}, "is_bought": True},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "delete",
+             "items": [{"id": existing.pk}, {"client_id": milk}]},
+            {"op_id": str(uuid.uuid4()), "created_at": now, "type": "end_session", "session": {"client_id": session}},
+        ]
+        body = {"household_id": self.household.pk, "ops": batch}
+        first = self.client.post("/api/shopping/sync/", body, format="json")
+        self.assertEqual([r["status"] for r in first.data["results"]], ["ok"] * 7)
+        self.assertEqual(first.data["items"], [])
+        self.assertIsNone(first.data["session"])
+        orders = dict(StoreItemOrder.objects.filter(store=store).values_list("item_name", "avg_position"))
+        self.assertEqual(orders, {"brot": 1, "milch": 2})
+
+        # Antwort ging verloren → die App schickt denselben Batch noch einmal.
+        again = self.client.post("/api/shopping/sync/", body, format="json")
+        self.assertEqual(again.status_code, 200)
+        self.assertNotIn("error", [r["status"] for r in again.data["results"]])
+        self.assertFalse(ShoppingItem.objects.exists())
+        self.assertEqual(ShoppingSession.objects.count(), 1)
+        self.assertIn("Milch", again.data["suggestions"])
+
+    def test_session_with_store_created_offline(self):
+        response = self.client.post("/api/shopping/sync/", {"household_id": self.household.pk, "ops": [
+            {"op_id": "a", "created_at": "x", "type": "start_session", "client_id": str(uuid.uuid4()),
+             "store_id": None, "store_name": "Wochenmarkt", "store_location": "Rathausplatz"},
+        ]}, format="json")
+        self.assertEqual(response.data["results"][0]["status"], "ok")
+        self.assertEqual(response.data["session"]["store"]["location"], "Rathausplatz")
+        self.assertEqual(response.data["stores"][0]["item_order"], {})
