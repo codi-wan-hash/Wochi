@@ -17,7 +17,10 @@ COPY . .
 
 EXPOSE 8000
 
+# --threads: ein langsamer Request (KI-Rezepte, PDF-Bericht) blockiert nicht
+# mehr einen ganzen Worker; --timeout 60, weil Bildgenerierung länger als die
+# Standard-30-Sekunden dauern kann.
 CMD ["sh", "-c", \
   "python manage.py collectstatic --no-input --clear && \
    python manage.py migrate && \
-   gunicorn wochi.wsgi --bind 0.0.0.0:8000 --workers 2"]
+   gunicorn wochi.wsgi --bind 0.0.0.0:8000 --workers 2 --threads 4 --timeout 60"]

@@ -35,21 +35,25 @@ Django 6 multi-tenant household management app. UI is in German. Deployed on Het
 - **households** — household creation and membership (many-to-many with User)
 - **tasks** — to-do items per household (priority, status, assignments)
 - **meals** — meal planning by date/type + recipe management
-- **shopping** — shopping list with bought/unbought toggle
+- **shopping** — shopping list with bought/unbought toggle, store sessions with learned item order; shared logic in `shopping/services.py`, offline sync protocol for the app in `shopping/sync.py`, name history in `FrequentItem`
+- **api** — DRF API for the mobile app (`../wochi-app`), JWT auth with a password fingerprint claim (`api/authentication.py`, password change revokes all tokens), scoped throttles
+- **timetracking** — personal work-time tracking (per user, not per household)
 
 ### Key pattern: household isolation
 
-Every request goes through `get_current_household(user)` (defined in `households/`), which returns the user's active household. All model queries are scoped to `household=current_household`. Models use `ForeignKey(Household)` and most have `unique_together` constraints scoped to the household.
+Every request goes through `get_current_household(user)` (defined in `households/utils.py`), which returns the user's active household (`HouseholdSelection`, falling back to the oldest membership). All model queries are scoped to `household=current_household`. Models use `ForeignKey(Household)` and most have `unique_together` constraints scoped to the household.
 
 ### URL structure
 
 ```
 /                  → accounts (home, register)
 /accounts/         → Django auth (login, logout)
-/households/       → household selection
 /tasks/            → task CRUD + toggle status
 /meals/            → meal plan CRUD + recipe CRUD
 /shopping/         → shopping list CRUD + toggle bought
+/households/       → household management (switch, leave, invite)
+/api/              → REST API for the app (incl. /api/shopping/sync/)
+/timetracking/     → work-time tracking
 /admin/            → Django admin
 ```
 
