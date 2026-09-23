@@ -1,0 +1,56 @@
+<script>
+(function () {
+    "use strict";
+
+    function notify(text, variant) {
+        if (window.wochii) window.wochii.toast(text, variant ? { variant: variant } : {});
+    }
+
+    function selectAll(input) {
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+    }
+
+    function copyLink(input) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(input.value);
+        }
+        // Ohne Clipboard-API (z. B. http im Heimnetz): markieren und kopieren.
+        selectAll(input);
+        return document.execCommand("copy") ? Promise.resolve() : Promise.reject(new Error("copy"));
+    }
+
+    function copyWithFeedback(input) {
+        copyLink(input).then(function () {
+            notify("Link kopiert.");
+        }).catch(function () {
+            selectAll(input);
+            notify("Kopieren hat nicht geklappt. Der Link ist markiert – bitte selbst kopieren.", "danger");
+        });
+    }
+
+    document.querySelectorAll("[data-invite]").forEach(function (box) {
+        const input = box.querySelector("[data-invite-url]");
+        if (!input) return;
+        const copyButton = box.querySelector("[data-invite-copy]");
+        const shareButton = box.querySelector("[data-invite-share]");
+
+        if (copyButton) {
+            copyButton.addEventListener("click", function () { copyWithFeedback(input); });
+        }
+        if (!shareButton || !navigator.share) return;
+
+        shareButton.classList.remove("d-none");
+        shareButton.addEventListener("click", function () {
+            navigator.share({
+                title: "Einladung zu Wochii",
+                text: box.dataset.shareText,
+                url: input.value,
+            }).catch(function (err) {
+                if (err && err.name === "AbortError") return;  // Menü einfach geschlossen
+                copyWithFeedback(input);  // Teilen ging nicht: wenigstens kopieren
+            });
+        });
+    });
+})();
+</script>

@@ -1,0 +1,23 @@
+<script>
+(function () {
+    "use strict";
+    // Formulare mit data-confirm fragen vor dem Absenden nach und sperren danach
+    // den Knopf, damit ein doppelter Tipp nicht zweimal auslöst.
+    document.addEventListener("submit", function (event) {
+        const form = event.target;
+        if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+            event.preventDefault();
+            return;
+        }
+        const button = form.querySelector("button[type=submit]");
+        if (button) button.disabled = true;
+    });
+    // Zurück-Taste (bfcache): gesperrte Knöpfe wieder freigeben.
+    window.addEventListener("pageshow", function (event) {
+        if (!event.persisted) return;
+        document.querySelectorAll("form button[type=submit]").forEach(function (button) {
+            button.disabled = false;
+        });
+    });
+})();
+</script>

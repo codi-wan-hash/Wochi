@@ -1,0 +1,13 @@
+{# Formular „Beitreten“ (Ersteinrichtung und Haushaltsseite). Erwartet join_form. #}
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="join">
+    <div class="mb-3">
+        <label for="{{ join_form.invite_token.id_for_label }}" class="form-label">{{ join_form.invite_token.label }}</label>
+        {{ join_form.invite_token }}
+        {% if join_form.invite_token.errors %}
+        <div class="invalid-feedback d-block" id="{{ join_form.invite_token.auto_id }}_error">{{ join_form.invite_token.errors|join:" " }}</div>
+        {% endif %}
+    </div>
+    <button type="submit" class="btn btn-outline-primary">Beitreten</button>
+</form>

@@ -1,0 +1,13 @@
+{# Einladungslink mit „Teilen“ und „Kopieren“. Erwartet household und invite_url; #}
+{# das Verhalten steckt in households/_invite_script.html. #}
+<div class="invite-link" data-invite
+     data-share-text="Komm in unseren Haushalt „{{ household.name }}“ bei Wochii:">
+    <label for="invite-link-{{ household.pk }}" class="form-label fw-semibold">Einladungslink</label>
+    <input type="text" id="invite-link-{{ household.pk }}" class="form-control"
+           value="{{ invite_url }}" readonly data-invite-url>
+    <div class="d-flex gap-2 flex-wrap mt-2">
+        {# Nur sichtbar, wo das Gerät ein Teilen-Menü hat (vor allem Handys). #}
+        <button type="button" class="btn btn-dark d-none" data-invite-share>Link teilen</button>
+        <button type="button" class="btn btn-outline-secondary" data-invite-copy>Link kopieren</button>
+    </div>
+</div>

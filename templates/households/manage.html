@@ -1,6 +1,120 @@
 {% extends "base.html" %}
+
 {% block title %}Haushalt · Wochii{% endblock %}
+
 {% block content %}
-<h1 class="h2 mb-3">Haushalt</h1>
-<p class="text-muted">{{ household.name }}</p>
+<div class="container py-4" style="max-width: 720px;">
+    <h1 class="h2 mb-1">Haushalt</h1>
+    <p class="text-muted mb-4">Aktiv: <strong>{{ household.name }}</strong></p>
+
+    <section class="card border-0 shadow-sm rounded-4 mb-4" aria-labelledby="members-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-3" id="members-heading">
+                Mitglieder <span class="badge rounded-pill text-bg-light">{{ members|length }}</span>
+            </h2>
+            <ul class="list-group list-group-flush">
+                {% for member in members %}
+                <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                        <span class="fw-semibold">{{ member.get_full_name|default:member.username }}</span>
+                        {% if member.get_full_name %}<span class="text-muted small">({{ member.username }})</span>{% endif %}
+                        {% if member == user %}<span class="badge text-bg-light">Du</span>{% endif %}
+                    </div>
+                    {% if member != user %}
+                    <form method="post" action="{% url 'household_remove_member' household.pk member.pk %}"
+                          data-confirm="{{ member.username }} aus „{{ household.name }}“ entfernen? {{ member.username }} sieht danach nichts mehr von diesem Haushalt.">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Entfernen<span class="visually-hidden">: {{ member.username }}</span></button>
+                    </form>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+
+    <section class="card border-0 shadow-sm rounded-4 mb-4" aria-labelledby="invite-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-2" id="invite-heading">Andere einladen</h2>
+            <p class="text-muted small">
+                Wer diesen Link öffnet, kann „{{ household.name }}“ beitreten – nach der
+                Anmeldung oder mit einem neuen Konto.
+            </p>
+            {% include "households/_invite_link.html" %}
+
+            <hr class="my-4">
+            <form method="post" action="{% url 'household_regenerate_invite' household.pk %}"
+                  data-confirm="Neuen Einladungslink erzeugen? Der bisherige Link funktioniert danach nicht mehr.">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Neuen Link erzeugen</button>
+            </form>
+            <p class="small text-muted mt-2 mb-0">
+                Danach funktioniert der bisherige Link nicht mehr – sinnvoll, wenn er an die
+                falsche Person gegangen ist. Wer schon Mitglied ist, bleibt Mitglied.
+            </p>
+        </div>
+    </section>
+
+    {% if other_households %}
+    <section class="card border-0 shadow-sm rounded-4 mb-4" aria-labelledby="switch-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-3" id="switch-heading">Deine anderen Haushalte</h2>
+            <ul class="list-group list-group-flush">
+                {% for other in other_households %}
+                <li class="list-group-item px-0 d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                        <span class="fw-semibold">{{ other.name }}</span>
+                        <span class="text-muted small">· {{ other.member_count }} Mitglied{{ other.member_count|pluralize:"er" }}</span>
+                    </div>
+                    <form method="post" action="{% url 'household_switch' other.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Wechseln<span class="visually-hidden"> zu „{{ other.name }}“</span></button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="card border-0 shadow-sm rounded-4 mb-4" aria-labelledby="create-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-3" id="create-heading">Weiteren Haushalt anlegen</h2>
+            {% include "households/_create_form.html" %}
+        </div>
+    </section>
+
+    <section class="card border-0 shadow-sm rounded-4 mb-4" aria-labelledby="join-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-2" id="join-heading">Einem Haushalt beitreten</h2>
+            <p class="text-muted small">Füge den Einladungslink ein, den du bekommen hast – der Code allein geht auch.</p>
+            {% include "households/_join_form.html" %}
+        </div>
+    </section>
+
+    <section class="card border-danger-subtle shadow-sm rounded-4" aria-labelledby="leave-heading">
+        <div class="card-body p-4">
+            <h2 class="h5 mb-2" id="leave-heading">Haushalt verlassen</h2>
+            {% if is_last_member %}
+            <p class="text-danger small mb-3">
+                <strong>Du bist das einzige Mitglied.</strong> Wenn du „{{ household.name }}“
+                verlässt, wird der Haushalt mit allen Daten endgültig gelöscht.
+            </p>
+            {% else %}
+            <p class="text-muted small mb-3">
+                Die anderen Mitglieder behalten alle Daten. Zurück kommst du nur mit einem Einladungslink.
+            </p>
+            {% endif %}
+            <form method="post" action="{% url 'household_leave' household.pk %}" data-confirm="{{ leave_confirm }}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger">Haushalt verlassen</button>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "households/_invite_script.html" %}
+{% include "households/_confirm_script.html" %}
 {% endblock %}
